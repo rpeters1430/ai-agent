@@ -35,7 +35,8 @@ code="$(curl -s -o /dev/null -w '%{http_code}' -c "$JAR" -H 'Content-Type: appli
 [ "$code" = 200 ] || fail "sign-in returned $code"
 echo "ok   sign-in"
 
-curl -fsS -b "$JAR" "$HUB/" | grep -q '<script src="/app.js">' || fail "UI page not served"
+curl -fsS -b "$JAR" "$HUB/" | grep -q '<script type="module" src="/js/main.js">' || fail "UI page not served"
+curl -fsS -b "$JAR" "$HUB/js/main.js" | grep -q '^import ' || fail "UI modules not served"
 curl -fsS -b "$JAR" "$HUB/vendor/xterm/lib/xterm.js" >/dev/null || fail "xterm assets missing"
 echo "ok   UI + vendored xterm"
 

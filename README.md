@@ -182,7 +182,11 @@ app/modeltest.js     "Test with agents" for Ollama models
 app/agentstream.js   readable output + loop guard for OpenCode/Pi JSON runs
 app/preview.js       dev-server preview proxy (its own port / origin)
 app/errors.js        shared route error handling (status codes + logging)
-app/public/          UI (vanilla JS + xterm.js)
+app/public/          UI: index.html + style.css, xterm.js vendored from node_modules
+app/public/js/       UI code as native ES modules (no build step); main.js is the entry and runs each
+                     module's init() in order once all are loaded. One module per tab/feature:
+                     core, theme, auth, workspace, terminals, ollama, lab, catalog, nav, automations,
+                     system, diff, files, arena, snippets, preview, issues, providers, config, health…
 scripts/smoke-test.sh  starts a built image and checks health, sign-in, UI, preview port and CLIs
 data/home/           persisted $HOME (CLI logins/config)
 workspace/           your cloned repositories
@@ -196,6 +200,10 @@ Node 22 (see `.nvmrc`). From `app/`:
 npm ci
 npm run check      # ESLint + the node:test suite
 ```
+
+The suite includes end-to-end tests that need `tmux`, and a browser test of the UI (`test/ui.test.js`) that drives
+an installed Chrome/Chromium through `playwright-core` (nothing is downloaded; set `CHROME_PATH` if it isn't found).
+Tests whose tools are missing are skipped.
 
 To test a locally built image the same way CI does:
 
