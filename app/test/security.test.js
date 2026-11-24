@@ -7,6 +7,7 @@ const path = require('path');
 const http = require('http');
 const net = require('net');
 const { spawn } = require('child_process');
+const crypto = require('crypto');
 const preview = require('../preview');
 
 test('stripHubCookies removes only Agent Hub cookies', () => {
@@ -86,6 +87,7 @@ async function waitFor(fn, ms = 15000) {
 
 test('server: CSRF origin check, isolated preview port, cookie stripping', async (t) => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ah-e2e-'));
+  const uiPassword = crypto.randomBytes(12).toString('hex'); // generated per run, nothing hardcoded
   const [hubPort, previewPort] = [await freePort(), await freePort()];
   let upstreamCookie = 'unset';
   const upstream = http.createServer((req, res) => {
@@ -97,7 +99,7 @@ test('server: CSRF origin check, isolated preview port, cookie stripping', async
 
   const child = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], {
     env: {
-      ...process.env, HOME: tmp, WORKSPACE: path.join(tmp, 'ws'), UI_PASSWORD: 'pw-test',
+      ...process.env, HOME: tmp, WORKSPACE: path.join(tmp, 'ws'), UI_PASSWORD: uiPassword,
       PORT: String(hubPort), PREVIEW_PORT: String(previewPort), PREVIEW_PUBLIC_PORT: String(previewPort),
       PREVIEW_SAME_ORIGIN: 'false', GH_TOKEN: '', GITHUB_TOKEN: '', PATH: '/usr/bin:/bin',
     },
@@ -109,9 +111,9 @@ test('server: CSRF origin check, isolated preview port, cookie stripping', async
 
   const host = `127.0.0.1:${hubPort}`;
   // Cross-origin login (CSRF) is blocked, same-origin works.
-  const evil = await request(hubPort, 'POST', '/api/login', { body: { password: 'pw-test' }, headers: { Origin: `http://127.0.0.1:${previewPort}` } });
+  const evil = await request(hubPort, 'POST', '/api/login', { body: { password: uiPassword }, headers: { Origin: `http://127.0.0.1:${previewPort}` } });
   assert.equal(evil.status, 403);
-  const login = await request(hubPort, 'POST', '/api/login', { body: { password: 'pw-test' }, headers: { Origin: `http://${host}` } });
+  const login = await request(hubPort, 'POST', '/api/login', { body: { password: uiPassword }, headers: { Origin: `http://${host}` } });
   assert.equal(login.status, 200);
   const session = login.headers['set-cookie'][0].split(';')[0];
 
