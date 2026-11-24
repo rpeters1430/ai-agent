@@ -1,7 +1,6 @@
 'use strict';
 const express = require('express');
 const http = require('http');
-const net = require('net');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
@@ -16,6 +15,7 @@ const notify = require('./notify');
 const modeltest = require('./modeltest');
 const envstore = require('./envstore');
 const workspaceMod = require('./workspace');
+const preview = require('./preview');
 
 const PORT = parseInt(process.env.PORT || '7681', 10);
 const WORKSPACE = process.env.WORKSPACE || '/workspace';
@@ -25,6 +25,16 @@ const SESSION_STATE_FILE = path.join(HUB_DIR, 'sessions.json');
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 14; // 14 days
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 10;
+// Dev-server previews run on their own port, which the browser treats as a separate origin (see preview.js).
+const PREVIEW_PORT = parseInt(process.env.PREVIEW_PORT ?? '7682', 10) || 0;
+const PREVIEW_PUBLIC_PORT = parseInt(process.env.PREVIEW_PUBLIC_PORT || '', 10) || PREVIEW_PORT;
+const PREVIEW_PUBLIC_URL = String(process.env.PREVIEW_PUBLIC_URL || '').trim().replace(/\/+$/, '');
+// Legacy mode: serve /preview/ on the main port. Previewed pages then share Agent Hub's origin and can use its API.
+const PREVIEW_SAME_ORIGIN = process.env.PREVIEW_SAME_ORIGIN === 'true' || !PREVIEW_PORT;
+const PREVIEW_HANDOFF_MS = 2 * 60 * 1000;
+const PREVIEW_COOKIE_MS = 12 * 60 * 60 * 1000;
+// Set TRUST_PROXY=true when Agent Hub sits behind a reverse proxy (e.g. Tailscale/docktail) that sets X-Forwarded-For.
+const TRUST_PROXY = process.env.TRUST_PROXY === 'true';
 
 // ---------------------------------------------------------------- auth ----
 let PASSWORD = process.env.UI_PASSWORD || '';
@@ -79,6 +89,21 @@ function parseToken(tok) {
   return { exp: Number(exp), jti };
 }
 const validToken = (tok) => !!parseToken(tok);
+
+// Preview tokens have 4 parts ("pt"/"pc" prefix), so they can never pass as a session token and vice versa.
+// pt = one-time-ish handoff in a preview link (2 min), pc = the preview server's own cookie (12 h).
+function makePreviewToken(kind) {
+  const exp = String(Date.now() + (kind === 'pt' ? PREVIEW_HANDOFF_MS : PREVIEW_COOKIE_MS));
+  const payload = `${kind}.${exp}.${crypto.randomBytes(9).toString('hex')}`;
+  return `${payload}.${sign(payload)}`;
+}
+function validPreviewToken(tok, kind) {
+  if (!tok || typeof tok !== 'string') return false;
+  const parts = tok.split('.');
+  if (parts.length !== 4 || parts[0] !== kind || !parts[2] || Number(parts[1]) < Date.now()) return false;
+  const a = Buffer.from(parts[3]), b = Buffer.from(sign(parts.slice(0, 3).join('.')));
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
 function cookies(req) {
   const out = {};
   (req.headers.cookie || '').split(';').forEach((c) => {
@@ -90,6 +115,25 @@ function cookies(req) {
   return out;
 }
 const authed = (req) => validToken(cookies(req).ah_session);
+
+// Browsers always send Origin on cross-origin and on non-GET requests. Rejecting a mismatch blocks CSRF,
+// including from previewed dev servers, which are same-site (same host, other port) but not same-origin.
+function sameOriginRequest(req) {
+  const origin = req.headers.origin;
+  if (origin) {
+    try { return new URL(origin).host === req.headers.host; } catch { return false; }
+  }
+  const site = req.headers['sec-fetch-site'];
+  return !site || site === 'same-origin' || site === 'none';
+}
+
+function clientIp(req) {
+  if (TRUST_PROXY) {
+    const xff = String(req.headers['x-forwarded-for'] || '').split(',').map((s) => s.trim()).filter(Boolean);
+    if (xff.length) return xff[xff.length - 1]; // the entry added by the trusted proxy
+  }
+  return req.socket?.remoteAddress || 'unknown';
+}
 
 const loginFailures = new Map(); // ip -> [timestamps]
 function loginRateCheck(ip) {
@@ -224,10 +268,11 @@ app.disable('x-powered-by');
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'no-referrer');
-  // Proxied dev-server previews manage their own framing & CSP; keep Agent Hub routes strict.
+  // Same-origin (legacy) previews manage their own framing & CSP; keep Agent Hub routes strict. frame-src allows
+  // the separate preview origin to be shown in the Preview dialog's iframe.
   if (!req.path.startsWith('/preview/')) {
     res.setHeader('X-Frame-Options', 'DENY');
-    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https://avatars.githubusercontent.com data: blob:; connect-src 'self' ws: wss:; frame-src 'self'; frame-ancestors 'none'; base-uri 'self'");
+    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https://avatars.githubusercontent.com data: blob:; connect-src 'self' ws: wss:; frame-src 'self' http: https:; frame-ancestors 'none'; base-uri 'self'");
   }
   next();
 });
@@ -239,8 +284,12 @@ app.use((req, res, next) => {
 
 app.get('/healthz', (req, res) => res.json({ ok: true, uptime: Math.round(process.uptime()) }));
 
+app.use('/api', (req, res, next) => (
+  ['GET', 'HEAD', 'OPTIONS'].includes(req.method) || sameOriginRequest(req)
+    ? next() : res.status(403).json({ error: 'cross-origin request blocked' })));
+
 app.post('/api/login', (req, res) => {
-  const ip = req.socket?.remoteAddress || 'unknown';
+  const ip = clientIp(req);
   const rate = loginRateCheck(ip);
   if (!rate.allowed) {
     res.setHeader('Retry-After', String(rate.retrySec));
@@ -449,52 +498,45 @@ modeltest.register(app, wrap, {});
 envstore.register(app, wrap, { repoDir });
 workspaceMod.register(app, wrap, {
   run, targetDir, repoDir, wtDir, WT_ROOT, WORKSPACE, branchSlug, tmuxName, tmuxSessions,
-  envOverrides: envstore.getEnvOverrides, PORT,
+  envSource: envstore.sourceLine, excludedPorts: () => PREVIEW_EXCLUDED,
 });
 automations.register(app, wrap, {
   run, isBinInstalled, githubToken, WORKSPACE, WT_ROOT, SAFE_NAME, repoDir, wtDir, branchSlug, tmuxName,
-  MODEL_RE: ollama.MODEL_RE, ollamaApplied: ollama.applied, envOverrides: envstore.getEnvOverrides,
+  MODEL_RE: ollama.MODEL_RE, ollamaApplied: ollama.applied, envSource: envstore.sourceLine,
   onJobEnd: notify.jobEnded,
 });
 tools.register(app, wrap, { run });
 notify.register(app, wrap, { run });
 
-// ---- Authenticated Port Preview Proxy (/preview/:port/*) ----
-function validPreviewPort(raw) {
-  const p = Number(raw);
-  return Number.isInteger(p) && p >= 1024 && p <= 65535 && p !== PORT ? p : 0;
+// ---- Authenticated Port Preview Proxy (/preview/:port/*), see preview.js ----
+const PREVIEW_EXCLUDED = [PORT, PREVIEW_PORT].filter(Boolean);
+
+function previewBase(req) {
+  if (PREVIEW_PUBLIC_URL) return PREVIEW_PUBLIC_URL;
+  let host = 'localhost';
+  try { host = new URL(`http://${req.headers.host || 'localhost'}`).hostname; } catch {}
+  return `http://${host}:${PREVIEW_PUBLIC_PORT}`;
 }
+function previewLink(req, port, rest = '/') {
+  if (PREVIEW_SAME_ORIGIN) return `/preview/${port}${rest}`;
+  const u = new URL(`${previewBase(req)}/preview/${port}${rest}`);
+  u.searchParams.set('ah_pt', makePreviewToken('pt'));
+  return u.toString();
+}
+
+app.get('/api/preview/link', wrap(async (req, res) => {
+  const port = preview.validPort(req.query.port, PREVIEW_EXCLUDED);
+  if (!port) throw new Error('Enter a port between 1024 and 65535 (not Agent Hub itself).');
+  res.json({ url: previewLink(req, port), sameOrigin: PREVIEW_SAME_ORIGIN });
+}));
 
 app.use('/preview/:port', (req, res) => {
   if (!authed(req)) return res.status(401).send('Unauthorized — sign in to Agent Hub first.');
-  const port = validPreviewPort(req.params.port);
+  const port = preview.validPort(req.params.port, PREVIEW_EXCLUDED);
   if (!port) return res.status(400).send('Invalid preview port (must be 1024-65535 and not Agent Hub itself).');
-  const upstreamPath = req.url || '/';
-  const headers = { ...req.headers, host: `127.0.0.1:${port}` };
-  delete headers['content-security-policy'];
-  const proxyReq = http.request({
-    hostname: '127.0.0.1',
-    port,
-    path: upstreamPath,
-    method: req.method,
-    headers,
-  }, (proxyRes) => {
-    const outHeaders = { ...proxyRes.headers };
-    if (outHeaders.location && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//i.test(outHeaders.location)) {
-      try {
-        const u = new URL(outHeaders.location);
-        if (Number(u.port) === port) outHeaders.location = `/preview/${port}${u.pathname}${u.search}${u.hash}`;
-      } catch {}
-    } else if (outHeaders.location && outHeaders.location.startsWith('/') && !outHeaders.location.startsWith(`/preview/${port}/`)) {
-      outHeaders.location = `/preview/${port}${outHeaders.location}`;
-    }
-    res.writeHead(proxyRes.statusCode || 502, outHeaders);
-    proxyRes.pipe(res);
-  });
-  proxyReq.on('error', (err) => {
-    if (!res.headersSent) res.status(502).send(`Nothing is listening on container port ${port} (${err.code || err.message}).`);
-  });
-  req.pipe(proxyReq);
+  // Old links / bookmarks: send them to the isolated preview server.
+  if (!PREVIEW_SAME_ORIGIN) return res.redirect(302, previewLink(req, port, req.url || '/'));
+  preview.proxyHttp(req, res, port, req.url || '/');
 });
 
 // URLs that CLIs tried to open via xdg-open/$BROWSER (see /usr/local/bin/hub-open)
@@ -545,10 +587,9 @@ app.post('/api/sessions', wrap(async (req, res) => {
   const base = tmuxName(`${agentKey}-${repo || 'home'}${wt ? '-' + wt : ''}`);
   let name = base, i = 2;
   while (existing.has(name)) name = `${base}-${i++}`;
-  const envExports = Object.entries(envstore.getEnvOverrides())
-    .map(([k, v]) => `export ${k}='${String(v).replace(/'/g, `'\\''`)}'`).join('; ');
+  // Saved API keys come from ~/.agent-hub/env.sh (mode 600) rather than the command line, where `ps` would show them.
   // Keep the pane alive after the agent exits so output isn't lost.
-  const script = `${envExports ? envExports + '; ' : ''}${cmd}; code=$?; echo; echo "[${label} exited with code $code - dropping to shell]"; exec bash -l`;
+  const script = `${envstore.sourceLine()}; ${cmd}; code=$?; echo; echo "[${label} exited with code $code - dropping to shell]"; exec bash -l`;
   const r = await run('tmux', ['new-session', '-d', '-s', name, '-c', cwd, '-x', '220', '-y', '50', 'bash', '-lc', script]);
   if (!r.ok) throw new Error(r.stderr.trim() || 'tmux failed');
   await run('tmux', ['set-option', '-t', name, '@agent', agentKey]);
@@ -576,35 +617,15 @@ const wss = new WebSocketServer({ noServer: true });
 server.on('upgrade', (req, socket, head) => {
   let url;
   try { url = new URL(req.url, 'http://x'); } catch { socket.write('HTTP/1.1 400 Bad Request\r\n\r\n'); return socket.destroy(); }
-  const origin = req.headers.origin;
-  let sameOrigin = !origin;
-  if (origin) {
-    try { sameOrigin = new URL(origin).host === req.headers.host; } catch { sameOrigin = false; }
-  }
-  if (!authed(req) || !sameOrigin) {
+  if (!authed(req) || !sameOriginRequest(req)) {
     socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n'); return socket.destroy();
   }
-  // WebSocket tunnel for /preview/:port/* (Vite / Next.js HMR / DSH web UI)
-  const pm = url.pathname.match(/^\/preview\/(\d+)(\/.*)?$/);
+  // WebSocket tunnel for /preview/:port/* (legacy same-origin mode only)
+  const pm = PREVIEW_SAME_ORIGIN && preview.parsePreviewPath(url.pathname);
   if (pm) {
-    const port = validPreviewPort(pm[1]);
+    const port = preview.validPort(pm.port, PREVIEW_EXCLUDED);
     if (!port) { socket.write('HTTP/1.1 400 Bad Request\r\n\r\n'); return socket.destroy(); }
-    const targetPath = (pm[2] || '/') + url.search;
-    const upstream = net.connect(port, '127.0.0.1', () => {
-      const hdrs = [`${req.method} ${targetPath} HTTP/${req.httpVersion}`];
-      for (let i = 0; i < req.rawHeaders.length; i += 2) {
-        const k = req.rawHeaders[i], v = req.rawHeaders[i + 1];
-        if (k.toLowerCase() === 'host') hdrs.push(`Host: 127.0.0.1:${port}`);
-        else hdrs.push(`${k}: ${v}`);
-      }
-      upstream.write(hdrs.join('\r\n') + '\r\n\r\n');
-      if (head && head.length) upstream.write(head);
-      upstream.pipe(socket);
-      socket.pipe(upstream);
-    });
-    upstream.on('error', () => { try { socket.destroy(); } catch {} });
-    socket.on('error', () => { try { upstream.destroy(); } catch {} });
-    return;
+    return preview.proxyUpgrade(req, socket, head, port, pm.rest + url.search);
   }
   if (url.pathname !== '/ws/term') {
     socket.write('HTTP/1.1 404 Not Found\r\n\r\n'); return socket.destroy();
@@ -646,11 +667,26 @@ function shutdown(sig) {
     try { ws.close(1001, 'server restarting'); } catch {}
   }
   wss.close(() => {});
+  if (previewServer) previewServer.close();
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 5000).unref();
 }
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
+
+let previewServer = null;
+if (!PREVIEW_SAME_ORIGIN) {
+  previewServer = preview.createPreviewServer({
+    excludedPorts: PREVIEW_EXCLUDED,
+    parseCookies: cookies,
+    isAuthed: (c) => validToken(c.ah_session) || validPreviewToken(c.ah_preview, 'pc'),
+    checkHandoff: (t) => validPreviewToken(t, 'pt'),
+    makeCookie: () => makePreviewToken('pc'),
+    cookieTtlSec: PREVIEW_COOKIE_MS / 1000,
+  });
+  previewServer.on('error', (e) => console.error(`[agent-hub] preview server on :${PREVIEW_PORT} failed: ${e.message}`));
+  previewServer.listen(PREVIEW_PORT, '0.0.0.0', () => console.log(`[agent-hub] dev-server previews on :${PREVIEW_PORT} (published as ${PREVIEW_PUBLIC_URL || ':' + PREVIEW_PUBLIC_PORT})`));
+}
 
 fs.mkdirSync(WORKSPACE, { recursive: true });
 server.listen(PORT, '0.0.0.0', () => console.log(`[agent-hub] listening on :${PORT}, workspace ${WORKSPACE}`));

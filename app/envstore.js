@@ -93,6 +93,12 @@ function getEnvOverrides() {
   return loadSavedEnv();
 }
 
+// Shell snippet that loads the saved keys. Scripts source this file instead of embedding the values,
+// so secrets never end up in run scripts on disk or in tmux command lines visible to `ps`.
+function sourceLine() {
+  return `[ -f ${shellQuote(ENV_SH)} ] && . ${shellQuote(ENV_SH)}`;
+}
+
 function maskValue(v) {
   if (!v) return '';
   if (v.length <= 8) return MASK;
@@ -116,11 +122,8 @@ function resolveInstructionPath(scope, name, repo, repoDir) {
 }
 
 function register(app, wrap, helpers) {
-  // Ensure env.sh exists on startup if env.json already exists
-  const initial = loadSavedEnv();
-  if (Object.keys(initial).length) {
-    try { syncEnvShell(initial); } catch {}
-  }
+  // Regenerate env.sh from env.json on startup, so scripts that source it always match the saved keys.
+  try { syncEnvShell(loadSavedEnv()); } catch {}
 
   app.get('/api/env', wrap(async (req, res) => {
     const saved = loadSavedEnv();
@@ -213,4 +216,4 @@ function register(app, wrap, helpers) {
   }));
 }
 
-module.exports = { register, getEnvOverrides, saveEnvVars, loadSavedEnv, maskValue, ENV_SH };
+module.exports = { register, getEnvOverrides, saveEnvVars, loadSavedEnv, maskValue, sourceLine, ENV_SH };

@@ -52,6 +52,25 @@ async function toolInfo(t) {
   };
 }
 
+// Re-read installed versions and ask npm for the latest ones. fresh = skip the npm cache too (the UI does this on
+// every page load). Several tabs loading at once share one check.
+let inflight = null;
+const INFO_CONCURRENCY = 3; // a few at a time: starting every CLI at once is slow on a NAS
+function refreshInfo(fresh) {
+  if (inflight) return inflight;
+  if (fresh) latestCache.clear();
+  inflight = (async () => {
+    const tools = new Array(TOOLS.length);
+    let next = 0;
+    await Promise.all(Array.from({ length: Math.min(INFO_CONCURRENCY, TOOLS.length) }, async () => {
+      while (next < TOOLS.length) { const i = next++; tools[i] = await toolInfo(TOOLS[i]); }
+    }));
+    infoCache = { t: Date.now(), tools };
+    return infoCache;
+  })().finally(() => { inflight = null; });
+  return inflight;
+}
+
 function updateScript(keys) {
   const list = TOOLS.filter((t) => keys.includes(t.key));
   const standardPkgs = list.filter((t) => t.pkg && t.pkg !== '@deepseek-ai/dsh').map((t) => `${t.pkg}@latest`);
@@ -80,11 +99,8 @@ function register(app, wrap, helpers) {
   ctx = helpers;
 
   app.get('/api/tools', wrap(async (req, res) => {
-    if (req.query.fresh || !infoCache.tools || Date.now() - infoCache.t > 10 * 60 * 1000) {
-      const tools = [];
-      for (const t of TOOLS) tools.push(await toolInfo(t)); // one at a time: starting 5 CLIs at once is slow on a NAS
-      infoCache = { t: Date.now(), tools };
-    }
+    const fresh = !!req.query.fresh;
+    if (fresh || !infoCache.tools || Date.now() - infoCache.t > 10 * 60 * 1000) await refreshInfo(fresh);
     const tools = infoCache.tools;
     const updating = (await ctx.run('tmux', ['has-session', '-t', `=${SESSION}`])).ok;
     res.json({ tools, updating, session: SESSION, hasUpdates: fs.existsSync(PREFIX) });

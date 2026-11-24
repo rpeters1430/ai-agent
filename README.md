@@ -6,7 +6,7 @@ plus the GitHub CLI, behind a password-protected web UI with real browser termin
 - Clone any of your GitHub repos into `./workspace` with one click
 - Start any agent in any repo; sessions run in **tmux**, so they keep running when you close the tab
 - Reattach from any device; view **2 sessions side-by-side in Split View** or run **Multi-Agent Arena** comparisons
-- Drag-and-drop or paste screenshots directly into the terminal, inspect **colored diffs & commit/branch/stash**, browse repo files/images, and preview container localhost dev servers via the authenticated **Port Preview Proxy (`/preview/:port/`)**
+- Drag-and-drop or paste screenshots directly into the terminal, inspect **colored diffs & commit/branch/stash**, browse repo files/images, and preview container localhost dev servers via the authenticated **Port Preview Proxy** (served on its own port, see [Dev-server previews](#dev-server-previews))
 - `git` is wired through `gh`, so agents can push, open PRs (`gh pr create`), and so on
 
 ## Start
@@ -138,10 +138,30 @@ Events:
 
 - **Yolo checkbox**: starts Claude with `--dangerously-skip-permissions` and Codex with
   `--dangerously-bypass-approvals-and-sandbox`. The container is the sandbox. It can only see
-  `./workspace` and `./data/home`, but the `dev` user has passwordless `sudo` inside the container.
+  `./workspace` and `./data/home`. Passwordless `sudo` for the `dev` user is **off** by default; set
+  `ALLOW_SUDO=true` in `.env` if your agents need to install system packages.
+- **Automations and your GitHub token**: automation runs are unattended, so use a fine-grained token limited to the
+  repos you watch (Contents, Issues, Pull requests: read/write; Checks: read for CI fixes) rather than a classic `repo` token.
 - **Scrolling and copying**: tmux mouse mode is on. Scroll with the wheel. Hold **Shift**
   (on macOS, **Option**) while dragging to select text.
-- Don't expose port 3870 to the internet. Use LAN or Tailscale only, since the UI gives shell access.
+- Don't expose port 3870 (or the preview port 3871) to the internet. Use LAN or Tailscale only, since the UI gives shell access.
+- Saved API keys live in `~/.agent-hub/env.sh` (mode 600). Sessions, automations and Arena runs source that file
+  instead of copying keys into scripts or command lines.
+- Behind a reverse proxy that sets `X-Forwarded-For`, set `TRUST_PROXY=true` so sign-in rate limiting is per client.
+- **System** checks every CLI for updates each time you open or refresh the page, and shows a notice when updates are available.
+
+## Dev-server previews
+
+The **Preview** button proxies a dev server running inside the container (`npm run dev`, `dsh web`, …). Previews are
+served on a **separate port** (`HUB_PREVIEW_PORT`, default `3871` → container `7682`), so the browser treats them as a
+different site origin. Pages from a dev server, and any third-party scripts they load, can't call the Agent Hub API with
+your session, and Agent Hub's cookies are stripped before a request reaches the dev server.
+
+- Open previews from the Preview dialog: it creates a short-lived sign-in link for the preview port.
+- If you reach Agent Hub via HTTPS (e.g. docktail on 443), previews open in a new tab because an https page can't
+  embed an http one. To embed them, publish the preview port behind HTTPS too and set `PREVIEW_PUBLIC_URL`
+  (e.g. `https://agents-preview.your-tailnet.ts.net`).
+- `PREVIEW_SAME_ORIGIN=true` brings back the old behaviour (previews on the main port). Only use it for dev servers you trust.
 
 ## Layout
 

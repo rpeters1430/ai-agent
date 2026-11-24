@@ -42,13 +42,32 @@ function loadSnippets() {
   return DEFAULT_SNIPPETS.map((s) => ({ ...s }));
 }
 
+const inside = (root, p) => p === root || p.startsWith(root + path.sep);
+
+// Real path of p, or of its nearest existing parent plus the missing tail (for files that don't exist yet).
+function realpathLoose(p) {
+  const tail = [];
+  let cur = p;
+  for (;;) {
+    try { return path.join(fs.realpathSync(cur), ...tail); } catch (e) {
+      if (e.code !== 'ENOENT' && e.code !== 'ENOTDIR') throw e;
+    }
+    const parent = path.dirname(cur);
+    if (parent === cur) return p;
+    tail.unshift(path.basename(cur));
+    cur = parent;
+  }
+}
+
+// Resolve rel inside root. Symlinks are followed, so a link in a repo can't expose files outside it
+// (e.g. a cloned repo with `notes -> ~/.agent-hub/env.json`).
 function safeSubpath(root, rel) {
   const cleanRel = String(rel || '').replace(/^\/+/, '');
   const resolvedRoot = path.resolve(root);
   const full = path.resolve(resolvedRoot, cleanRel);
-  if (full !== resolvedRoot && !full.startsWith(resolvedRoot + path.sep)) {
-    throw new Error('path escapes repository');
-  }
+  if (!inside(resolvedRoot, full)) throw new Error('path escapes repository');
+  const realRoot = realpathLoose(resolvedRoot);
+  if (!inside(realRoot, realpathLoose(full))) throw new Error('path escapes repository (symlink)');
   return full;
 }
 
@@ -68,7 +87,8 @@ function pruneOldUploads(maxAgeMs = 24 * 3600 * 1000) {
   return removed;
 }
 
-async function detectListeningPorts(run, excludePort) {
+async function detectListeningPorts(run, exclude) {
+  const excluded = new Set([].concat(exclude || []).map(Number));
   const ports = new Set();
   const r = await run('ss', ['-tlnH']);
   if (r.ok && r.stdout) {
@@ -78,7 +98,7 @@ async function detectListeningPorts(run, excludePort) {
       const m = local.match(/:(\d+)$/);
       if (m) {
         const p = Number(m[1]);
-        if (p >= 1024 && p <= 65535 && p !== excludePort) ports.add(p);
+        if (p >= 1024 && p <= 65535 && !excluded.has(p)) ports.add(p);
       }
     }
   } else {
@@ -91,7 +111,7 @@ async function detectListeningPorts(run, excludePort) {
           if (cols[3] !== '0A') continue; // 0A = LISTEN
           const hexPort = (cols[1] || '').split(':')[1];
           const p = parseInt(hexPort, 16);
-          if (p >= 1024 && p <= 65535 && p !== excludePort) ports.add(p);
+          if (p >= 1024 && p <= 65535 && !excluded.has(p)) ports.add(p);
         }
       } catch {}
     }
@@ -100,7 +120,7 @@ async function detectListeningPorts(run, excludePort) {
 }
 
 function register(app, wrap, helpers) {
-  const { run, targetDir, repoDir, wtDir, WT_ROOT, WORKSPACE, branchSlug, tmuxName, tmuxSessions, envOverrides, PORT } = helpers;
+  const { run, targetDir, repoDir, wtDir, WT_ROOT, WORKSPACE, branchSlug, tmuxName, tmuxSessions, envSource, excludedPorts } = helpers;
 
   // ---- Image / File Upload (saves into container /tmp/agent-hub-uploads so agents can read it) ----
   app.post('/api/upload', wrap(async (req, res) => {
@@ -305,14 +325,13 @@ function register(app, wrap, helpers) {
 
     const arenaId = crypto.randomBytes(3).toString('hex');
     const promptDir = path.join(HUB_DIR, 'arena', arenaId);
-    fs.mkdirSync(promptDir, { recursive: true });
+    fs.mkdirSync(promptDir, { recursive: true, mode: 0o700 });
     const promptFile = path.join(promptDir, 'prompt.md');
     fs.writeFileSync(promptFile, prompt, { mode: 0o600 });
 
     const existing = new Set((await tmuxSessions()).map((s) => s.name));
     const q = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
-    const envPrefix = Object.entries(envOverrides ? envOverrides() : {})
-      .map(([k, v]) => `export ${k}=${q(v)}`).join('\n');
+    const envPrefix = envSource ? envSource() : ''; // saved API keys, sourced from env.sh (not copied into run.sh)
 
     const runs = [];
     for (let i = 0; i < picks.length; i++) {
@@ -365,7 +384,7 @@ function register(app, wrap, helpers) {
     const [dfR, wtDuR, ports] = await Promise.all([
       run('df', ['-B1', WORKSPACE], { timeout: 5000 }),
       fs.existsSync(WT_ROOT) ? run('du', ['-sb', WT_ROOT], { timeout: 10000 }) : Promise.resolve({ ok: true, stdout: '0\t' }),
-      detectListeningPorts(run, PORT),
+      detectListeningPorts(run, excludedPorts ? excludedPorts() : []),
     ]);
     let disk = null;
     if (dfR.ok) {

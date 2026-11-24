@@ -9,7 +9,7 @@ services:
       - TZ=${TZ:-America/Los_Angeles}
       - PUID=${PUID:-1000}
       - PGID=${PGID:-10}
-      - ALLOW_SUDO=${ALLOW_SUDO:-true}
+      - ALLOW_SUDO=${ALLOW_SUDO:-false}
       - UI_PASSWORD=${UI_PASSWORD:?set UI_PASSWORD in .env}
       # GitHub: either set a token here, or leave blank and use "GitHub login" in the UI.
       - GH_TOKEN=${GITHUB_TOKEN:-}
@@ -26,8 +26,15 @@ services:
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
       # Optional: preset Ollama server (can also be set in the UI)
       - OLLAMA_URL=${OLLAMA_URL:-}
+      # Dev-server previews are served on their own port (a separate browser origin) so previewed pages
+      # can't use the Agent Hub API. PREVIEW_PUBLIC_URL overrides the address the browser is sent to.
+      - PREVIEW_PUBLIC_PORT=${HUB_PREVIEW_PORT:-3871}
+      - PREVIEW_PUBLIC_URL=${PREVIEW_PUBLIC_URL:-}
+      - PREVIEW_SAME_ORIGIN=${PREVIEW_SAME_ORIGIN:-false}
+      - TRUST_PROXY=${TRUST_PROXY:-false}
     ports:
       - ${HUB_PORT:-3870}:7681
+      - ${HUB_PREVIEW_PORT:-3871}:7682
     volumes:
       # Home holds every CLI's auth + config (~/.claude, ~/.codex, ~/.config/opencode, ~/.pi, gh, agy)
       - ./data/home:/home/dev
