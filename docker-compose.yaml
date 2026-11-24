@@ -44,6 +44,10 @@ services:
       - docktail.service.name=agents
       - docktail.service.port=7681
       - docktail.service.service-port=443
+      - docktail.service.1.enable=true
+      - docktail.service.1.name=agents-preview
+      - docktail.service.1.port=7682
+      - docktail.service.1.service-port=443
     restart: unless-stopped
     logging:
       driver: json-file
