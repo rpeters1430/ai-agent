@@ -1559,7 +1559,17 @@ async function start() {
   $('#login').classList.add('hidden'); $('#app').classList.remove('hidden');
   await loadStatus();
   await Promise.all([loadLocal(), loadSessions(), loadOllama().catch(() => {}), typeof loadAuto === 'function' ? loadAuto().catch(() => {}) : null]);
-  if (typeof loadTools === 'function') { loadTools().catch(() => {}); loadNotify().catch(() => {}); }
+  if (typeof loadTools === 'function') {
+    // Check every CLI for updates on each page load (asks npm for the latest versions, skipping the server cache).
+    loadTools(true).then((d) => {
+      const outdated = (d?.tools || []).filter((t) => t.outdated);
+      if (outdated.length && !d.updating && typeof showNoticeToast === 'function') {
+        showNoticeToast(`${outdated.length} CLI update${outdated.length > 1 ? 's' : ''} available`,
+          `${outdated.map((t) => `${t.label} ${t.version} → ${t.latest}`).join(' · ')}. Update them under System.`);
+      }
+    }).catch(() => {});
+    loadNotify().catch(() => {});
+  }
   if (typeof initFeatures === 'function') initFeatures();
   if (status.github.connected) loadGh();
   for (const [name, e] of open) {

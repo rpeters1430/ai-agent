@@ -597,7 +597,7 @@ async function runJob(job, handle) {
   const a = HEADLESS[job.agent];
   if (!a) throw new Error(`unknown agent ${job.agent}`);
   const jdir = path.join(JOBS_DIR, job.id);
-  fs.mkdirSync(jdir, { recursive: true });
+  fs.mkdirSync(jdir, { recursive: true, mode: 0o700 });
   const out = path.join(jdir, 'output.md');
   const repo = job.repo;
 
@@ -657,10 +657,9 @@ async function runJob(job, handle) {
   // Run the agent in a tmux session so it can be watched live from the UI.
   step(job, `${a.label} is working`);
   const q = (s) => `'${s.replace(/'/g, `'\\''`)}'`;
-  const envExports = Object.entries(ctx.envOverrides ? ctx.envOverrides() : {})
-    .map(([k, v]) => `export ${k}=${q(v)}`);
   const script = [
-    ...envExports,
+    // Saved API keys are sourced from ~/.agent-hub/env.sh, never written into run.sh.
+    ...(ctx.envSource ? [ctx.envSource()] : []),
     `cd ${q(wdir)} || exit 1`,
     `JOBDIR=${q(jdir)}`,
     `P="$(cat ${q(path.join(jdir, 'prompt.md'))})"`,
@@ -672,7 +671,7 @@ async function runJob(job, handle) {
     'echo; echo "[agent exited with code $code - Agent Hub is posting the result. This window closes in 2 minutes.]"',
     'sleep 120',
   ].join('\n');
-  fs.writeFileSync(path.join(jdir, 'run.sh'), script + '\n');
+  fs.writeFileSync(path.join(jdir, 'run.sh'), script + '\n', { mode: 0o700 });
   const sess = ctx.tmuxName(`auto-${job.agent}-${job.id}`);
   job.session = sess; saveJobs();
   await must(ctx.run('tmux', ['new-session', '-d', '-s', sess, '-c', wdir, '-x', '200', '-y', '50', 'bash', '-lc', `bash ${q(path.join(jdir, 'run.sh'))}`]), 'tmux');

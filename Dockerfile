@@ -130,7 +130,7 @@ RUN chmod +x /usr/local/bin/entrypoint.sh /usr/local/bin/hub-open \
       'export CHROME_PATH="/usr/bin/chromium"' \
       > /etc/profile.d/agent-hub.sh
 
-EXPOSE 7681
+EXPOSE 7681 7682
 LABEL org.opencontainers.image.source="https://github.com/rpeters1430/ai-agent" \
       org.opencontainers.image.description="Agent Hub: browser terminal UI for coding agent CLIs"
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
