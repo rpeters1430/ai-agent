@@ -3,6 +3,7 @@
 // for OpenCode, Pi, Claude Code, Codex, Qwen Code, and DeepSeek Harness (dsh).
 const fs = require('fs');
 const path = require('path');
+const { notFound } = require('./errors');
 
 const HOME = process.env.HOME || '/home/dev';
 const HUB_DIR = path.join(HOME, '.agent-hub');
@@ -606,7 +607,7 @@ function register(app, wrap) {
   app.post('/api/providers/:id/apply', wrap(async (req, res) => {
     const id = String(req.params.id || '').toLowerCase();
     const p = customProviders().find((x) => x.id === id);
-    if (!p) throw new Error('provider not found');
+    if (!p) throw notFound('provider not found');
     const targets = (Array.isArray(req.body?.targets) && req.body.targets.length ? req.body.targets : ['opencode', 'pi'])
       .filter((t) => t === 'opencode' || t === 'pi');
     if (!targets.length) throw new Error('Pick OpenCode and/or Pi');

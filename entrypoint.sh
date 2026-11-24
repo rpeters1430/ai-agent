@@ -74,7 +74,8 @@ export CHROME_PATH="/usr/bin/chromium"
 [ -n "$GIT_USER_NAME" ]  && git config --global user.name  "$GIT_USER_NAME"
 [ -n "$GIT_USER_EMAIL" ] && git config --global user.email "$GIT_USER_EMAIL"
 git config --global init.defaultBranch main
-git config --global --add safe.directory "*" 2>/dev/null || true
+# --replace-all keeps exactly one entry (older versions added a duplicate on every start).
+git config --global --replace-all safe.directory "*" '^\*$' 2>/dev/null || true
 
 # Let plain `git` (used by every agent) authenticate through gh.
 if [ -n "$GH_TOKEN" ] || gh auth status >/dev/null 2>&1; then

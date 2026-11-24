@@ -2,6 +2,7 @@
 // Runtime API key / env var manager, global & repo agent instructions editor, and MCP server config manager.
 const fs = require('fs');
 const path = require('path');
+const { notFound } = require('./errors');
 
 const HOME = process.env.HOME || '/home/dev';
 const HUB_DIR = path.join(HOME, '.agent-hub');
@@ -117,7 +118,7 @@ function resolveInstructionPath(scope, name, repo, repoDir) {
   }
   if (!INSTRUCTION_NAMES.includes(name)) throw new Error('Allowed files: ' + INSTRUCTION_NAMES.join(', '));
   const dir = repoDir(repo);
-  if (!fs.existsSync(dir)) throw new Error('repo not found');
+  if (!fs.existsSync(dir)) throw notFound('repo not found');
   return path.join(dir, name);
 }
 

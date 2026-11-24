@@ -16,6 +16,8 @@ const modeltest = require('./modeltest');
 const envstore = require('./envstore');
 const workspaceMod = require('./workspace');
 const preview = require('./preview');
+const { wrap, notFound } = require('./errors');
+const { cleanupLegacyDshPatches } = require('./agents');
 
 const PORT = parseInt(process.env.PORT || '7681', 10);
 const WORKSPACE = process.env.WORKSPACE || '/workspace';
@@ -324,7 +326,6 @@ app.get('/api/me', (req, res) => res.json({ authed: authed(req) }));
 
 app.use('/api', (req, res, next) => (authed(req) ? next() : res.status(401).json({ error: 'unauthorized' })));
 
-const wrap = (fn) => (req, res) => fn(req, res).catch((e) => res.status(400).json({ error: e.message }));
 
 // CLI logins (Claude, OpenCode, ...) send the browser back to http://localhost:<port>/callback?code=...
 // That only exists inside this container, so the user pastes that address here and we deliver it locally.
@@ -385,7 +386,7 @@ app.get('/api/repos/github', wrap(async (req, res) => {
   const all = [];
   for (let page = 1; page <= 10; page++) {
     const r = await fetch(`https://api.github.com/user/repos?per_page=100&page=${page}&sort=updated&affiliation=owner,collaborator,organization_member`,
-      { headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'User-Agent': 'agent-hub' } });
+      { headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'User-Agent': 'agent-hub' }, signal: AbortSignal.timeout(30000) });
     if (!r.ok) throw new Error(`GitHub API ${r.status}`);
     const batch = await r.json();
     all.push(...batch.map((x) => ({ full_name: x.full_name, name: x.name, private: x.private, description: x.description, updated_at: x.updated_at, default_branch: x.default_branch, fork: x.fork, archived: x.archived })));
@@ -424,7 +425,7 @@ app.post('/api/repos/create', wrap(async (req, res) => {
 app.post('/api/repos/:name/git', wrap(async (req, res) => {
   const wt = req.body?.wt ? String(req.body.wt) : '';
   const dir = targetDir(req.params.name, wt);
-  if (!fs.existsSync(dir)) throw new Error('not found');
+  if (!fs.existsSync(dir)) throw notFound();
   const op = req.body?.op;
   const ops = {
     pull: ['git', ['pull', '--ff-only']],
@@ -573,7 +574,7 @@ app.post('/api/sessions', wrap(async (req, res) => {
     const a = AGENTS[agent]; if (!a) throw new Error('unknown agent');
     if (wt && !repo) throw new Error('worktree needs a repo');
     cwd = repo ? targetDir(repo, wt) : WORKSPACE;
-    if (!fs.existsSync(cwd)) throw new Error(wt ? 'worktree not found' : 'repo not found');
+    if (!fs.existsSync(cwd)) throw notFound(wt ? 'worktree not found' : 'repo not found');
     cmd = yolo && a.yolo ? a.yolo : a.cmd;
     label = `${a.label}${yolo && a.yolo ? ' (yolo)' : ''}`; agentKey = agent;
     // Local Ollama or custom OpenAI-compatible provider model (validated: no quotes/spaces)
@@ -689,4 +690,6 @@ if (!PREVIEW_SAME_ORIGIN) {
 }
 
 fs.mkdirSync(WORKSPACE, { recursive: true });
+cleanupLegacyDshPatches();
+process.on('unhandledRejection', (e) => console.error('[agent-hub] unhandled rejection:', e?.stack || e));
 server.listen(PORT, '0.0.0.0', () => console.log(`[agent-hub] listening on :${PORT}, workspace ${WORKSPACE}`));
