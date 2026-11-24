@@ -98,21 +98,23 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/opt/tools/b
  && /opt/tools/bin/uv --version
 
 # Antigravity CLI (agy) - official installer, into a dev-owned dir
+# On non-amd64 builds a missing agy build is a warning, not a failed image.
 RUN if [ "$INSTALL_AGY" = "true" ]; then \
-      curl -fsSL https://antigravity.google/cli/install.sh | bash -s -- --dir /opt/tools/bin \
-      && test -x /opt/tools/bin/agy \
-      && (/opt/tools/bin/agy --version || true); \
+      if curl -fsSL https://antigravity.google/cli/install.sh | bash -s -- --dir /opt/tools/bin \
+         && test -x /opt/tools/bin/agy; then \
+        /opt/tools/bin/agy --version || true; \
+      elif [ "$(dpkg --print-architecture)" = "amd64" ]; then \
+        echo "Antigravity (agy) install failed" >&2; exit 1; \
+      else \
+        echo "WARNING: Antigravity (agy) is not available for $(dpkg --print-architecture); skipping" >&2; \
+      fi; \
     fi
 
 # --- Web UI ----------------------------------------------------------------
 USER root
 WORKDIR /app
-COPY app/package.json app/package-lock.json* ./
-RUN if [ -f package-lock.json ]; then \
-      NPM_CONFIG_PREFIX= npm ci --omit=dev; \
-    else \
-      NPM_CONFIG_PREFIX= npm install --omit=dev; \
-    fi \
+COPY app/package.json app/package-lock.json ./
+RUN NPM_CONFIG_PREFIX= npm ci --omit=dev \
  && npm cache clean --force \
  && rm -rf /root/.npm/_cacache
 COPY app/ ./

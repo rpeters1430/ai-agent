@@ -39,7 +39,6 @@ const FIXTURE = {
   'test/health.test.js': "'use strict';\nconst test = require('node:test');\nconst assert = require('node:assert');\nconst health = require('../src/routes/health');\n\ntest('health returns ok', () => {\n  let body = '';\n  health({}, { writeHead() {}, end(b) { body = b; } });\n  assert.strictEqual(JSON.parse(body).ok, true);\n});\n",
 };
 
-let ctx;
 let results = {};       // model -> agent -> result
 const queue = [];       // [{ model, agent, mode }]
 let current = null;     // { model, agent, mode, startedAt, live: [], child, cancel }
@@ -254,7 +253,6 @@ async function pump() {
 }
 
 function register(app, wrap, helpers) {
-  ctx = helpers;
   load();
 
   app.get('/api/ollama/tests', wrap(async (req, res) => {

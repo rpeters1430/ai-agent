@@ -166,7 +166,7 @@ your session, and Agent Hub's cookies are stripped before a request reaches the 
 ## Layout
 
 ```
-Dockerfile           image: node 22 + gh + tmux + the five agent CLIs
+Dockerfile           image: node 22 + gh + tmux + the agent CLIs
 docker-compose.yaml
 entrypoint.sh        fixes volume ownership, git/gh setup, starts the UI as `dev`
 tmux.conf
@@ -177,7 +177,32 @@ app/notify.js        ntfy / Discord / webhook notifications
 app/ollama.js        Ollama connection, catalog, OpenCode/Pi config
 app/modeltest.js     "Test with agents" for Ollama models
 app/agentstream.js   readable output + loop guard for OpenCode/Pi JSON runs
+app/preview.js       dev-server preview proxy (its own port / origin)
+app/errors.js        shared route error handling (status codes + logging)
 app/public/          UI (vanilla JS + xterm.js)
+scripts/smoke-test.sh  starts a built image and checks health, sign-in, UI, preview port and CLIs
 data/home/           persisted $HOME (CLI logins/config)
 workspace/           your cloned repositories
 ```
+
+## Development
+
+Node 22 (see `.nvmrc`). From `app/`:
+
+```bash
+npm ci
+npm run check      # ESLint + the node:test suite
+```
+
+To test a locally built image the same way CI does:
+
+```bash
+docker build -t agent-hub:local . && scripts/smoke-test.sh agent-hub:local
+```
+
+CI runs on every PR and push to `main`:
+- **Lint, audit and unit tests**: `node --check` on every file, ESLint, `npm audit` (fails on high/critical issues in runtime dependencies), and the test suite.
+- **Build, smoke-test and publish**: builds the image, runs `scripts/smoke-test.sh` on it, prints a Trivy vulnerability report (report only), and pushes to GHCR only if the smoke test passed (not on PRs).
+- An **arm64** image is built under QEMU only when you run the workflow manually (**Actions → Build and Publish Container Image → Run workflow**, tick *arm64*), because emulated builds are slow.
+
+Renovate keeps npm packages, the base image digest and GitHub Action digests up to date.
