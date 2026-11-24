@@ -16,6 +16,7 @@ const modeltest = require('./modeltest');
 const envstore = require('./envstore');
 const workspaceMod = require('./workspace');
 const preview = require('./preview');
+const tmuxfmt = require('./tmuxfmt');
 const { wrap, notFound } = require('./errors');
 const { cleanupLegacyDshPatches } = require('./agents');
 
@@ -255,11 +256,10 @@ async function githubToken() {
 
 const tmuxName = (s) => s.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 60);
 async function tmuxSessions() {
-  const fmt = '#{session_name}\t#{session_created}\t#{session_attached}\t#{window_activity}\t#{@agent}\t#{@repo}\t#{@label}\t#{@wt}';
-  const r = await run('tmux', ['list-sessions', '-F', fmt]);
+  const r = await run('tmux', tmuxfmt.listArgs(['session_name', 'session_created', 'session_attached', 'window_activity', '@agent', '@repo', '@label', '@wt']));
   if (!r.ok) return [];
   return r.stdout.trim().split('\n').filter(Boolean).map((l) => {
-    const [name, created, attached, activity, agent, repo, label, wt] = l.split('\t');
+    const [name, created, attached, activity, agent, repo, label, wt] = tmuxfmt.parseLine(l);
     return { name, created: Number(created) * 1000, attached: Number(attached), activity: Number(activity) * 1000, agent, repo, label, wt: wt || '' };
   });
 }
@@ -659,37 +659,67 @@ wss.on('connection', async (ws, url) => {
   ws.on('close', () => { try { term.kill(); } catch {} });
 });
 
+// ------------------------------------------------------------- startup ----
+// `node server.js` starts listening. Tests require() this file instead and call start()/stop() themselves.
+let previewServer = null;
 let shuttingDown = false;
-function shutdown(sig) {
-  if (shuttingDown) return;
-  shuttingDown = true;
-  console.log(`[agent-hub] received ${sig}, shutting down…`);
+
+function start({ port = PORT, previewPort = PREVIEW_PORT, host = '0.0.0.0', handleSignals = true } = {}) {
+  fs.mkdirSync(WORKSPACE, { recursive: true });
+  cleanupLegacyDshPatches();
+  if (handleSignals) {
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    process.on('SIGINT', () => shutdown('SIGINT'));
+    process.on('unhandledRejection', (e) => console.error('[agent-hub] unhandled rejection:', e?.stack || e));
+  }
+  const listening = [new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(port, host, () => {
+      console.log(`[agent-hub] listening on :${server.address().port}, workspace ${WORKSPACE}`);
+      resolve();
+    });
+  })];
+  if (!PREVIEW_SAME_ORIGIN) {
+    previewServer = preview.createPreviewServer({
+      excludedPorts: PREVIEW_EXCLUDED,
+      parseCookies: cookies,
+      isAuthed: (c) => validToken(c.ah_session) || validPreviewToken(c.ah_preview, 'pc'),
+      checkHandoff: (t) => validPreviewToken(t, 'pt'),
+      makeCookie: () => makePreviewToken('pc'),
+      cookieTtlSec: PREVIEW_COOKIE_MS / 1000,
+    });
+    previewServer.on('error', (e) => console.error(`[agent-hub] preview server on :${previewPort} failed: ${e.message}`));
+    listening.push(new Promise((resolve) => previewServer.listen(previewPort, host, () => {
+      console.log(`[agent-hub] dev-server previews on :${previewServer.address().port} (published as ${PREVIEW_PUBLIC_URL || ':' + PREVIEW_PUBLIC_PORT})`);
+      resolve();
+    })));
+  }
+  return Promise.all(listening).then(() => ({ port: server.address().port, previewPort: previewServer?.address()?.port || 0 }));
+}
+
+// Close terminals and both servers. Resolves once they have stopped accepting connections.
+function stop() {
   for (const ws of wss.clients) {
     try { ws.close(1001, 'server restarting'); } catch {}
   }
   wss.close(() => {});
-  if (previewServer) previewServer.close();
-  server.close(() => process.exit(0));
+  const closing = [new Promise((r) => server.close(() => r()))];
+  if (previewServer) closing.push(new Promise((r) => previewServer.close(() => r())));
+  server.closeAllConnections?.();
+  previewServer?.closeAllConnections?.();
+  return Promise.all(closing);
+}
+
+function shutdown(sig) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`[agent-hub] received ${sig}, shutting down…`);
+  stop().then(() => process.exit(0));
   setTimeout(() => process.exit(0), 5000).unref();
 }
-process.on('SIGTERM', () => shutdown('SIGTERM'));
-process.on('SIGINT', () => shutdown('SIGINT'));
 
-let previewServer = null;
-if (!PREVIEW_SAME_ORIGIN) {
-  previewServer = preview.createPreviewServer({
-    excludedPorts: PREVIEW_EXCLUDED,
-    parseCookies: cookies,
-    isAuthed: (c) => validToken(c.ah_session) || validPreviewToken(c.ah_preview, 'pc'),
-    checkHandoff: (t) => validPreviewToken(t, 'pt'),
-    makeCookie: () => makePreviewToken('pc'),
-    cookieTtlSec: PREVIEW_COOKIE_MS / 1000,
-  });
-  previewServer.on('error', (e) => console.error(`[agent-hub] preview server on :${PREVIEW_PORT} failed: ${e.message}`));
-  previewServer.listen(PREVIEW_PORT, '0.0.0.0', () => console.log(`[agent-hub] dev-server previews on :${PREVIEW_PORT} (published as ${PREVIEW_PUBLIC_URL || ':' + PREVIEW_PUBLIC_PORT})`));
+if (require.main === module) {
+  start().catch((e) => { console.error(`[agent-hub] failed to start: ${e.message}`); process.exit(1); });
 }
 
-fs.mkdirSync(WORKSPACE, { recursive: true });
-cleanupLegacyDshPatches();
-process.on('unhandledRejection', (e) => console.error('[agent-hub] unhandled rejection:', e?.stack || e));
-server.listen(PORT, '0.0.0.0', () => console.log(`[agent-hub] listening on :${PORT}, workspace ${WORKSPACE}`));
+module.exports = { app, server, start, stop };
