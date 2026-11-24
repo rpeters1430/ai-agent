@@ -1,0 +1,15 @@
+#!/bin/sh
+# Stand-in for xdg-open / $BROWSER inside the container: there is no browser here,
+# so hand the URL to the Agent Hub web UI, which shows it as a clickable notice.
+url="$1"
+case "$url" in http://*|https://*) ;; *) echo "hub-open: ignoring non-web target: $url" >&2; exit 0 ;; esac
+dir="${HOME:-/home/dev}/.agent-hub"
+log="$dir/open.log"
+mkdir -p "$dir" 2>/dev/null && chmod 700 "$dir" 2>/dev/null || true
+umask 077
+printf '%s\t%s\n' "$(date +%s%3N)" "$url" >> "$log"
+if [ "$(wc -l < "$log" 2>/dev/null || echo 0)" -gt 100 ]; then
+  tail -n 50 "$log" > "$log.tmp" 2>/dev/null && mv "$log.tmp" "$log" 2>/dev/null || true
+fi
+printf '\n[agent-hub] Sign-in link sent to your browser tab (look for the popup in the Agent Hub UI).\n' >&2
+exit 0

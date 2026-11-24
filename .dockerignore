@@ -1,0 +1,11 @@
+data
+workspace
+.git
+.github
+.env
+.env.*
+!.env.example
+.bashrc
+README.md
+*.log
+app/node_modules

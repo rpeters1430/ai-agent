@@ -1,0 +1,904 @@
+<!doctype html>
+<html lang="en" data-seed="ember" data-mode="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+  <meta name="theme-color" content="#0b0d10">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Agent Hub">
+  <meta name="format-detection" content="telephone=no">
+  <title>Agent Hub</title>
+  <link rel="stylesheet" href="/vendor/xterm/css/xterm.css">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <!-- Login -->
+  <div id="login" class="login hidden">
+    <form id="loginForm" class="card login-card">
+      <div class="login-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="4" width="18" height="16" rx="4"/>
+          <path d="m8 10 3 2-3 2"/><path d="M13 14h3"/>
+        </svg>
+      </div>
+      <div>
+        <h1>Agent Hub</h1>
+        <p class="muted subtitle">Claude · Codex · OpenCode · Pi · Antigravity · Gemini · Qwen · DeepSeek</p>
+      </div>
+      <input id="pw" type="password" placeholder="Enter password" autocomplete="current-password" autofocus>
+      <button type="submit" class="primary lg">Sign in</button>
+      <p id="loginErr" class="err"></p>
+    </form>
+  </div>
+
+  <!-- App -->
+  <div id="app" class="app hidden">
+    <!-- Material 3 Expressive Navigation Rail (bottom bar on mobile) -->
+    <nav id="navRail" class="nav-rail" aria-label="Primary navigation">
+      <button id="railToggle" class="rail-brand" type="button" title="Collapse / expand panel" aria-label="Toggle side panel">
+        <span class="brand-glyph" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="4" width="18" height="16" rx="4"/>
+            <path d="m8 10 3 2-3 2"/><path d="M13 14h3"/>
+          </svg>
+        </span>
+      </button>
+
+      <div class="rail-items">
+        <button class="rail-btn active" type="button" data-pane="workspace" title="Workspace repositories">
+          <span class="rail-pill">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+            </svg>
+          </span>
+          <span class="rail-lbl">Repos</span>
+        </button>
+
+        <button class="rail-btn" type="button" data-pane="sessions" title="Running tmux sessions">
+          <span class="rail-pill">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>
+            </svg>
+            <span id="railBadgeSessions" class="rail-badge hidden"></span>
+          </span>
+          <span class="rail-lbl">Sessions</span>
+        </button>
+
+        <button class="rail-btn" type="button" data-pane="ollama" title="Local models (Ollama)">
+          <span class="rail-pill">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="5" y="5" width="14" height="14" rx="3"/><path d="M9 9h6v6H9z"/>
+              <path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/>
+            </svg>
+            <span id="railBadgePulls" class="rail-badge hidden"></span>
+          </span>
+          <span class="rail-lbl">Models</span>
+        </button>
+
+        <button class="rail-btn" type="button" data-pane="automations" title="GitHub automations">
+          <span class="rail-pill">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/>
+            </svg>
+            <span id="railBadgeAuto" class="rail-badge hidden"></span>
+          </span>
+          <span class="rail-lbl">Auto</span>
+        </button>
+
+        <button class="rail-btn" type="button" data-pane="github" title="GitHub repositories">
+          <span class="rail-pill">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="12" cy="18" r="3"/>
+              <path d="M6 9v3a3 3 0 0 0 3 3h6a3 3 0 0 0 3-3V9"/><path d="M12 15v-3"/>
+            </svg>
+          </span>
+          <span class="rail-lbl">GitHub</span>
+        </button>
+
+        <button class="rail-btn" type="button" data-pane="system" title="Accounts, CLI updates, notifications & theme">
+          <span class="rail-pill">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.6.85 1 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+            <span id="railBadgeTools" class="rail-badge warn hidden"></span>
+          </span>
+          <span class="rail-lbl">System</span>
+        </button>
+      </div>
+
+      <div class="rail-foot">
+        <button id="themeQuickToggle" class="icon-btn" type="button" title="Switch dark / light theme" aria-label="Toggle dark or light mode">
+          <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>
+          </svg>
+        </button>
+      </div>
+    </nav>
+
+    <!-- Collapsible Side Pane -->
+    <aside id="sidebar" class="sidebar">
+      <header class="pane-head">
+        <div class="pane-title-wrap">
+          <span class="brand-word">Agent Hub</span>
+          <span id="paneSubtitle" class="pane-sub">Workspace</span>
+        </div>
+        <button id="collapseSide" class="icon-btn hide-mobile" type="button" title="Collapse panel for full-width terminal" aria-label="Collapse panel">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+        </button>
+        <button id="closeSide" class="icon-btn only-mobile" type="button" title="Close" aria-label="Close panel">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </header>
+
+      <div class="pane-scroll">
+        <!-- Pane: Workspace -->
+        <section class="pane active" data-pane="workspace">
+          <div class="sec-h">
+            <h2>Repositories</h2>
+            <div class="row tight">
+              <button id="newRepoBtn" class="icon-btn" type="button" title="New repository" aria-label="New repository">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+              </button>
+              <button id="refreshLocal" class="icon-btn" type="button" title="Refresh" aria-label="Refresh repositories">
+                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36L21 8"/><path d="M21 3v5h-5"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="surface-card controls-card">
+            <label class="switch-row">
+              <span>Skip prompts (yolo) <span class="muted">Claude · Codex · Gemini · Qwen · Agy</span></span>
+              <input type="checkbox" id="yolo" class="m3-switch">
+            </label>
+            <label class="field-inline">
+              <span class="small muted">Local model (Ollama / custom)</span>
+              <select id="launchModel"><option value="">agent default</option></select>
+            </label>
+          </div>
+
+          <div id="localRepos" class="list"></div>
+        </section>
+
+        <!-- Pane: Sessions -->
+        <section class="pane" data-pane="sessions">
+          <div class="sec-h">
+            <h2>Active sessions</h2>
+            <button id="refreshSessions" class="icon-btn" type="button" title="Refresh" aria-label="Refresh sessions">
+              <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36L21 8"/><path d="M21 3v5h-5"/></svg>
+            </button>
+          </div>
+          <p class="small muted pane-note">Sessions run in tmux inside the container and survive tab closes or reconnects.</p>
+          <div id="sessions" class="list"></div>
+        </section>
+
+        <!-- Pane: Local Models (Ollama) -->
+        <section class="pane" data-pane="ollama">
+          <div class="sec-h">
+            <h2>Ollama server</h2>
+            <button id="refreshOllama" class="icon-btn" type="button" title="Refresh" aria-label="Refresh Ollama">
+              <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36L21 8"/><path d="M21 3v5h-5"/></svg>
+            </button>
+          </div>
+          <form id="ollamaUrlForm" class="row">
+            <input id="ollamaUrl" type="text" placeholder="http://192.168.1.50:11434" autocomplete="off">
+            <button type="submit" class="tonal">Connect</button>
+          </form>
+          <div id="ollamaStatus" class="small muted"></div>
+          <div id="ollamaRuntimeInfo" class="small hidden"></div>
+          <div id="ollamaBody" class="hidden stack">
+            <div class="row wrap">
+              <button id="openOllamaLab" type="button" class="primary" style="flex:1">CLI Compatibility Lab…</button>
+              <button id="browseModels" type="button" class="tonal">Browse &amp; pull…</button>
+            </div>
+            <details id="modelsBox" class="models-box" open>
+              <summary id="modelsCount">Models on this server</summary>
+              <div id="ollamaModels" class="list"></div>
+            </details>
+            <form id="pullForm" class="row">
+              <input id="pullName" type="text" list="pullSuggest" placeholder="Pull model, e.g. qwen2.5-coder:7b" autocomplete="off">
+              <button type="submit" class="tonal">Pull</button>
+            </form>
+            <datalist id="pullSuggest">
+              <option value="qwen2.5-coder:7b"><option value="qwen2.5-coder:14b"><option value="qwen2.5-coder:32b">
+              <option value="qwen3-coder:30b"><option value="gpt-oss:20b"><option value="devstral:24b"><option value="llama3.1:8b">
+            </datalist>
+            <div id="pulls" class="list"></div>
+            <div class="surface-card apply">
+              <div class="small muted">Apply checked models to CLIs:</div>
+              <div class="row wrap">
+                <label class="chip-check"><input type="checkbox" id="tgtPi" checked><span>Pi</span></label>
+                <label class="chip-check"><input type="checkbox" id="tgtOpencode" checked><span>OpenCode</span></label>
+                <label class="chip-check"><input type="checkbox" id="tgtClaude" checked><span>Claude</span></label>
+                <label class="chip-check"><input type="checkbox" id="tgtCodex" checked><span>Codex</span></label>
+                <label class="chip-check"><input type="checkbox" id="tgtQwen" checked><span>Qwen</span></label>
+                <label class="chip-check"><input type="checkbox" id="tgtDsh" checked><span>DSH</span></label>
+                <select id="ollamaDefault" title="Default model when the agent starts"><option value="">default: unchanged</option></select>
+              </div>
+              <button id="applyOllama" class="primary" type="button">Apply checked models</button>
+              <div id="appliedInfo" class="small muted"></div>
+            </div>
+            <details class="surface-card">
+              <summary>Server default context size</summary>
+              <form id="ctxForm" class="row" style="margin-top:8px">
+                <input id="serverCtx" type="text" inputmode="numeric" style="width:110px">
+                <button type="submit" class="tonal">Save</button>
+              </form>
+              <p class="small muted" style="margin:6px 0 0">Used for models without <code>num_ctx</code>. Match your <code>OLLAMA_CONTEXT_LENGTH</code>, then apply again.</p>
+            </details>
+          </div>
+
+          <div class="sec-h" style="margin-top:6px">
+            <h2>Custom providers</h2>
+            <button id="addProviderBtn" class="icon-btn" type="button" title="Add OpenAI-compatible provider (LM Studio, llama.cpp, vLLM, OpenRouter, DeepSeek)" aria-label="Add custom provider">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+            </button>
+          </div>
+          <p class="small muted pane-note">Connect LM Studio, llama.cpp, vLLM, OpenRouter, or DeepSeek API to OpenCode &amp; Pi.</p>
+          <div id="customProviders" class="list"></div>
+        </section>
+
+        <!-- Pane: Automations -->
+        <section class="pane" data-pane="automations">
+          <div class="sec-h">
+            <h2>GitHub automations</h2>
+            <button id="refreshAuto" class="icon-btn" type="button" title="Refresh" aria-label="Refresh automations">
+              <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36L21 8"/><path d="M21 3v5h-5"/></svg>
+            </button>
+          </div>
+          <div id="autoSummary" class="surface-card small muted">Agents that fix labeled issues, answer @mentions and review PRs.</div>
+          <button id="openAuto" type="button" class="primary">Manage automations…</button>
+          <div id="autoRecent" class="list"></div>
+        </section>
+
+        <!-- Pane: GitHub Repositories -->
+        <section class="pane" data-pane="github">
+          <div class="sec-h">
+            <h2>GitHub repositories</h2>
+            <button id="loadGh" class="icon-btn" type="button" title="Load repositories" aria-label="Reload GitHub repositories">
+              <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36L21 8"/><path d="M21 3v5h-5"/></svg>
+            </button>
+          </div>
+          <input id="ghFilter" type="search" placeholder="Filter repositories…">
+          <div id="ghRepos" class="list"><p class="muted small">Connect GitHub in System, then load your repositories.</p></div>
+        </section>
+
+        <!-- Pane: System, Accounts & Appearance -->
+        <section class="pane" data-pane="system">
+          <div class="sec-h">
+            <h2>Accounts</h2>
+            <button id="refreshStatus" class="icon-btn" type="button" title="Re-check accounts" aria-label="Re-check accounts">
+              <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36L21 8"/><path d="M21 3v5h-5"/></svg>
+            </button>
+          </div>
+          <div class="surface-card stack">
+            <div id="github" class="gh muted">Checking GitHub…</div>
+            <div id="logins" class="chips"></div>
+            <form id="oauthForm" class="oauth small">
+              <span class="muted" title="Claude Code, OpenCode and some other CLIs finish signing in by sending your browser to a localhost address. That address only exists inside the container, so paste it here instead.">Landed on a <code>localhost</code> callback page that won't load? Paste its address:</span>
+              <div class="row"><input name="url" placeholder="http://localhost:…/callback?code=…" autocomplete="off" spellcheck="false"><button type="submit" class="tonal">Finish</button></div>
+              <div id="oauthMsg"></div>
+            </form>
+          </div>
+
+          <div class="sec-h" style="margin-top:6px">
+            <h2>Appearance</h2>
+          </div>
+          <div class="surface-card stack">
+            <div class="row" style="justify-content:space-between;align-items:center">
+              <span class="small muted">Color palette</span>
+              <div id="seedPicker" class="seed-picker" role="radiogroup" aria-label="Theme color palette"></div>
+            </div>
+            <div class="row" style="justify-content:space-between;align-items:center">
+              <span class="small muted">Mode</span>
+              <div id="modePicker" class="segmented" role="radiogroup" aria-label="Color scheme">
+                <button type="button" data-mode="dark">Dark</button>
+                <button type="button" data-mode="light">Light</button>
+                <button type="button" data-mode="auto">Auto</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="sec-h" style="margin-top:6px">
+            <h2>Agent CLIs</h2>
+            <button id="refreshTools" class="icon-btn" type="button" title="Check versions" aria-label="Check CLI versions">
+              <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36L21 8"/><path d="M21 3v5h-5"/></svg>
+            </button>
+          </div>
+          <div id="tools" class="list"><p class="small muted">Checking versions…</p></div>
+          <div class="row wrap">
+            <button id="updateAll" class="primary" type="button">Update all CLIs</button>
+            <button id="resetTools" class="link hidden" type="button" title="Remove updated copies and use the versions built into the image">Reset to image</button>
+          </div>
+
+          <div class="sec-h" style="margin-top:6px">
+            <h2>Notifications</h2>
+          </div>
+          <div class="surface-card stack">
+            <div id="notifySummary" class="small muted">Checking…</div>
+            <button id="openNotify" class="tonal" type="button">Set up notifications…</button>
+          </div>
+
+          <div class="sec-h" style="margin-top:6px">
+            <h2>API Keys &amp; Config</h2>
+          </div>
+          <div class="surface-card stack">
+            <div class="small muted">Manage API keys (no container restart needed), global/repo instructions, and MCP servers.</div>
+            <div class="row wrap">
+              <button id="openEnvBtn" class="tonal" type="button">API keys…</button>
+              <button id="openCfgBtn" class="tonal" type="button">MCP &amp; instructions…</button>
+            </div>
+          </div>
+
+          <div class="sec-h" style="margin-top:6px">
+            <h2>Container health</h2>
+            <button id="refreshHealth" class="icon-btn" type="button" title="Refresh container health" aria-label="Refresh container health">
+              <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36L21 8"/><path d="M21 3v5h-5"/></svg>
+            </button>
+          </div>
+          <div class="surface-card stack">
+            <div id="healthSummary" class="small muted">Loading…</div>
+            <div class="row wrap">
+              <button id="pruneBtn" type="button">Prune temp &amp; merged</button>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <footer class="side-foot">
+        <button id="logout" class="link" type="button">Sign out</button>
+        <button id="logoutAll" class="link small" type="button" title="Revoke sessions on every browser and device">Sign out all</button>
+      </footer>
+    </aside>
+
+    <!-- Mobile backdrop when sheet is open -->
+    <div id="sideScrim" class="side-scrim"></div>
+
+    <!-- Terminal Workspace -->
+    <main class="main">
+      <div class="tabs">
+        <button id="openSide" class="icon-btn only-mobile" type="button" title="Open panel" aria-label="Open panel">
+          <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+        </button>
+        <div id="tabs" class="tab-list"></div>
+        <div class="toolbar-group">
+          <button id="splitBtn" class="tool compact hide-mobile" type="button" title="Toggle side-by-side split terminals">Split</button>
+          <button id="snippetsBtn" class="tool compact" type="button" title="Saved prompt snippets">Snippets</button>
+          <button id="uploadImgBtn" class="tool compact" type="button" title="Upload image or file into container and paste path (or drag/paste onto terminal)">Img</button>
+          <button id="previewBtn" class="tool compact" type="button" title="Preview a localhost dev server running inside the container">Preview</button>
+          <button id="fontDown" class="tool compact" type="button" title="Decrease terminal font size">A−</button>
+          <button id="fontUp" class="tool compact" type="button" title="Increase terminal font size">A+</button>
+          <button id="keysToggle" class="tool compact" type="button" title="Toggle quick keys bar (Esc, Tab, Ctrl+C, arrows)">Keys</button>
+          <button id="pasteBtn" class="tool primary-tonal" type="button" title="Paste text into the current terminal">Paste</button>
+        </div>
+        <input id="uploadFileInput" type="file" class="hidden" accept="image/*,.pdf,.txt,.md,.json,.csv,.log">
+      </div>
+      <div id="keybar" class="keybar hidden" aria-label="Terminal quick keys"></div>
+      <div id="terms" class="terms">
+        <div id="empty" class="empty">
+          <div class="empty-art" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="4" width="18" height="16" rx="4"/>
+              <path d="m8 10 3 2-3 2"/><path d="M13 14h3"/>
+            </svg>
+          </div>
+          <h2>Pick a repository and launch an agent</h2>
+          <p class="muted">Sessions run in tmux inside the container — close the tab and they keep working. Reattach any time from <b>Sessions</b>, or switch tabs with <code>Alt+1–9</code>.</p>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <div id="toasts" class="toasts"></div>
+
+  <!-- Ollama Model Library Dialog -->
+  <dialog id="catalog" class="catalog">
+    <div class="cat-head">
+      <h3>Ollama model library</h3>
+      <button id="catClose" class="icon-btn" type="button" title="Close" aria-label="Close">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <form id="catForm" class="row">
+      <input id="catQ" type="search" placeholder="Search ollama.com (e.g. coder, qwen, llama)…" autocomplete="off">
+      <select id="catC">
+        <option value="tools">Agent-ready (tool calling)</option>
+        <option value="">All models</option>
+        <option value="thinking">Thinking / reasoning</option>
+        <option value="vision">Vision (images)</option>
+        <option value="cloud">Cloud (runs on ollama.com)</option>
+        <option value="embedding">Embedding</option>
+      </select>
+      <button type="submit" class="primary">Search</button>
+    </form>
+    <p class="small muted legend">
+      <span class="badge live">tools</span> can drive OpenCode/Pi (edit files, run commands) ·
+      <span class="badge">thinking</span> step-by-step reasoning ·
+      <span class="badge">vision</span> reads images ·
+      <span class="badge cloud">cloud</span> runs on ollama.com, needs <code>ollama signin</code> on your PC.
+      Sizes are download size; the model needs about that much free GPU/RAM on your PC.
+    </p>
+    <div id="catList" class="list cat-list"></div>
+    <div class="row end"><button id="catMore" class="tonal hidden" type="button">Load more</button></div>
+  </dialog>
+
+  <!-- Automations Dialog -->
+  <dialog id="autoDlg" class="catalog auto">
+    <div class="cat-head">
+      <h3>Automations</h3>
+      <button id="autoClose" class="icon-btn" type="button" title="Close" aria-label="Close">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="auto-body">
+      <p class="small muted" style="margin:0">Agent Hub checks GitHub on a timer (no webhook or open port needed) and runs the chosen agent
+        unattended in its own worktree, with permission prompts off. It pushes branches, opens PRs and posts comments as your connected GitHub account.</p>
+      <form id="autoSettings" class="surface-card row wrap">
+        <span>Check every <input name="pollSeconds" type="text" inputmode="numeric" class="num"> s</span>
+        <span>· run <input name="maxConcurrent" type="text" inputmode="numeric" class="num"> at a time</span>
+        <span>· stop after <input name="timeoutMinutes" type="text" inputmode="numeric" class="num"> min</span>
+        <span title="OpenCode and Pi only: stop the run when the agent makes the same tool call with the same result this many times (0 = off). Small local models often loop like this.">· loop guard <input name="loopLimit" type="text" inputmode="numeric" class="num"> repeats</span>
+        <label class="inline-switch"><input type="checkbox" name="paused" class="m3-switch sm"> paused</label>
+        <button type="submit" class="tonal">Save</button>
+      </form>
+      <div id="autoPoll" class="small muted"></div>
+      <div id="autoStats" class="stats-bar hidden"></div>
+
+      <div class="sec-h"><h4>Watched repositories (Issues &amp; PRs)</h4><button id="watchCfgToggle" type="button" class="tonal">Configure workflow</button></div>
+      <div id="watchSummary" class="surface-card small muted"></div>
+      <form id="watchForm" class="auto-form hidden">
+        <div class="row wrap">
+          <label>Worker agent <select name="agent"></select></label>
+          <label data-wfor="model">Worker model <select name="model"></select></label>
+        </div>
+        <div class="row wrap">
+          <label>Reviewer agent <select name="reviewAgent"></select></label>
+          <label data-wfor="reviewModel">Reviewer model <select name="reviewModel"></select></label>
+        </div>
+        <div class="watch-group">
+          <div class="watch-group-title">Issues &amp; PR fixes</div>
+          <label class="inline-switch"><input type="checkbox" name="fixEnabled" class="m3-switch sm"> Work on labeled issues &amp; PRs</label>
+          <div class="row wrap" data-wfor="fix">
+            <label>Trigger label <input name="fixLabel" type="text" autocomplete="off" placeholder="agent-fix"></label>
+            <label data-wfor="autofix">Auto-fix review findings
+              <select name="autoFixRounds">
+                <option value="0">Off (review once and stop)</option>
+                <option value="1">Up to 1 fix round</option>
+                <option value="2">Up to 2 fix rounds</option>
+                <option value="3">Up to 3 fix rounds</option>
+              </select></label>
+          </div>
+          <div class="row wrap" data-wfor="fix">
+            <label class="inline-switch"><input type="checkbox" name="autoReviewAfterFix" class="m3-switch sm"> Auto-review PR after working</label>
+            <label class="inline-switch"><input type="checkbox" name="draft" class="m3-switch sm"> Open PRs as drafts</label>
+          </div>
+        </div>
+        <div class="watch-group">
+          <div class="watch-group-title">Pull requests</div>
+          <div class="row wrap">
+            <label class="inline-switch"><input type="checkbox" name="reviewLabelEnabled" class="m3-switch sm"> Review PRs when labeled</label>
+            <label data-wfor="reviewLabel">Review label <input name="reviewLabel" type="text" autocomplete="off" placeholder="agent-review"></label>
+          </div>
+          <div class="row wrap">
+            <label class="inline-switch"><input type="checkbox" name="reviewNewPrs" class="m3-switch sm"> Auto-review every new pull request</label>
+            <label data-wfor="newPr" class="inline-switch"><input type="checkbox" name="rereviewOnPush" class="m3-switch sm"> Re-review on new commits</label>
+          </div>
+          <div class="row wrap">
+            <label class="inline-switch"><input type="checkbox" name="autoFixCi" class="m3-switch sm"> Auto-fix failing CI checks on open PRs</label>
+          </div>
+        </div>
+        <div class="watch-group">
+          <div class="watch-group-title">Additional label profiles (OpenCode, local LLMs, etc.)</div>
+          <p class="small muted" style="margin:0">Add extra labels to trigger a different agent or local Ollama model on any watched repo (e.g. <code>opencode-fix</code> for OpenCode + a local LLM while <code>agent-fix</code> keeps your main agent).</p>
+          <div id="watchProfiles" class="stack"></div>
+          <div class="row wrap">
+            <button type="button" id="addOpencodeProfile" class="tonal">＋ OpenCode / local LLM label</button>
+            <button type="button" id="addCustomProfile">＋ Custom label profile</button>
+          </div>
+        </div>
+        <div class="watch-group">
+          <div class="watch-group-title">Comments</div>
+          <div class="row wrap">
+            <label class="inline-switch"><input type="checkbox" name="mentionEnabled" class="m3-switch sm"> Respond to @mentions</label>
+            <label data-wfor="mention">Keyword <input name="keyword" type="text" autocomplete="off" placeholder="@agent"></label>
+          </div>
+        </div>
+        <label data-wfor="outside" class="inline-switch"><input type="checkbox" name="allowOutside" class="m3-switch sm"> Also for people outside the repo (risky)</label>
+        <label>Extra instructions for watched repos (optional)
+          <textarea name="instructions" rows="3" placeholder="e.g. Follow CONTRIBUTING.md. Run tests before committing."></textarea></label>
+        <p id="watchHint" class="small muted"></p>
+        <div class="row end"><button type="button" id="watchCancel">Close</button><button type="submit" class="primary">Save workflow</button></div>
+      </form>
+      <form id="watchAddForm" class="row">
+        <input name="repo" type="text" list="autoRepos" placeholder="Add repository to watch (owner/name)…" autocomplete="off" required>
+        <button type="submit" class="primary">＋ Watch</button>
+      </form>
+      <div id="autoWatched" class="list"></div>
+
+      <div class="sec-h"><h4>Custom &amp; scheduled rules</h4><button id="autoNew" type="button" class="tonal">＋ New rule</button></div>
+      <form id="autoForm" class="auto-form hidden">
+        <label>What should happen?
+          <select name="preset">
+            <option value="fix_label">Fix issues when I add a label → opens a PR</option>
+            <option value="mention">Do what a comment asks when it mentions a keyword (e.g. @agent)</option>
+            <option value="review_label">Review a PR when I add a label</option>
+            <option value="new_pr">Review every new pull request</option>
+            <option value="ci_failure">Auto-fix failing CI checks on open PRs</option>
+            <option value="schedule">Run a task on a schedule → opens a PR if it changes code</option>
+          </select></label>
+        <label>Repository <input name="repo" type="text" list="autoRepos" placeholder="owner/name" autocomplete="off" required></label>
+        <datalist id="autoRepos"></datalist>
+        <label data-for="label">Label <input name="label" type="text" autocomplete="off"></label>
+        <label data-for="mention">Keyword <input name="keyword" type="text" autocomplete="off" placeholder="@agent"></label>
+        <div class="row wrap" data-for="schedule">
+          <label>Every <input name="everyHours" type="text" inputmode="numeric" class="num"> hours</label>
+          <label>or Cron (5-field, optional) <input name="cron" type="text" autocomplete="off" placeholder="0 2 * * 1-5"></label>
+        </div>
+        <div class="row wrap">
+          <label>Agent <select name="agent"></select></label>
+          <label data-for="model">Model <select name="model"></select></label>
+        </div>
+        <div class="row wrap" data-for="autoreview">
+          <label class="inline-switch"><input type="checkbox" name="autoReview" class="m3-switch sm"> auto-review PR after working</label>
+        </div>
+        <div class="row wrap" data-for="autoreview_cfg">
+          <label>Reviewer agent <select name="reviewAgent"></select></label>
+          <label data-for="reviewModel">Reviewer model <select name="reviewModel"></select></label>
+          <label>Auto-fix review findings
+            <select name="autoFixRounds">
+              <option value="0">Off (review once)</option>
+              <option value="1">Up to 1 round</option>
+              <option value="2">Up to 2 rounds</option>
+              <option value="3">Up to 3 rounds</option>
+            </select></label>
+        </div>
+        <label><span data-for="schedule">Task for the agent</span><span data-for="notschedule">Extra instructions (optional)</span>
+          <textarea name="instructions" rows="4" placeholder="e.g. Follow CONTRIBUTING.md. Keep PRs small."></textarea></label>
+        <div class="row wrap">
+          <label data-for="pr" class="inline-switch"><input type="checkbox" name="draft" class="m3-switch sm" checked> open PRs as drafts</label>
+          <label data-for="new_pr" class="inline-switch"><input type="checkbox" name="rereview" class="m3-switch sm"> review again on new commits</label>
+          <label data-for="outside" class="inline-switch"><input type="checkbox" name="allowOutside" class="m3-switch sm"> also for people outside the repo (risky)</label>
+        </div>
+        <p id="autoHint" class="small muted"></p>
+        <label>Name (optional) <input name="name" type="text" autocomplete="off"></label>
+        <div class="row end"><button type="button" id="autoCancel">Cancel</button><button type="submit" class="primary">Save rule</button></div>
+      </form>
+      <div id="autoRules" class="list"></div>
+
+      <div class="sec-h"><h4>Recent runs</h4><button id="autoClear" type="button" class="link">Clear finished</button></div>
+      <div id="autoJobs" class="list"></div>
+    </div>
+  </dialog>
+
+  <!-- Notifications Dialog -->
+  <dialog id="notifyDlg">
+    <form id="notifyForm" class="dlg auto-form" style="background:none;border:none;padding:0">
+      <h3 style="margin:0">Notifications</h3>
+      <p class="small muted" style="margin:0">Get a phone push when an automation finishes or fails, or when an agent goes quiet
+        (usually it's waiting for your answer). Fill in one or more destinations.</p>
+      <label>ntfy topic URL <input name="ntfyUrl" type="text" placeholder="https://ntfy.sh/agent-hub-pick-a-secret-name" autocomplete="off"></label>
+      <p class="small muted" style="margin:-4px 0 0">Install the ntfy app (Android/iOS), subscribe to the same topic. On ntfy.sh anyone who knows the topic name can read it, so pick a long random one, or use your own ntfy server.</p>
+      <label>ntfy access token (optional) <input name="ntfyToken" type="password" autocomplete="off" placeholder="tk_… for protected topics"></label>
+      <label>Discord webhook URL <input name="discordUrl" type="text" placeholder="https://discord.com/api/webhooks/…" autocomplete="off"></label>
+      <label>Other webhook (JSON POST) <input name="webhookUrl" type="text" placeholder="https://… (Home Assistant, n8n, …)" autocomplete="off"></label>
+      <label>Agent Hub link in notifications <input name="hubUrl" type="text" autocomplete="off"></label>
+      <div class="row wrap">
+        <label class="inline-switch"><input type="checkbox" name="jobSucceeded" class="m3-switch sm"> automation succeeded</label>
+        <label class="inline-switch"><input type="checkbox" name="jobFailed" class="m3-switch sm"> automation failed</label>
+      </div>
+      <div class="row wrap">
+        <label class="inline-switch"><input type="checkbox" name="idle" class="m3-switch sm"> an agent went quiet for</label>
+        <input name="idleMinutes" type="text" inputmode="numeric" class="num" style="width:56px"> <span>min</span>
+      </div>
+      <p id="notifyMsg" class="small"></p>
+      <div class="row end">
+        <button type="button" id="notifyTest" class="tonal">Send test</button>
+        <button type="button" id="notifyClose">Close</button>
+        <button type="submit" class="primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Info / Output Dialog -->
+  <dialog id="dlg">
+    <form method="dialog" class="dlg">
+      <h3 id="dlgTitle"></h3>
+      <pre id="dlgBody"></pre>
+      <div class="row end"><button value="ok" class="primary">Close</button></div>
+    </form>
+  </dialog>
+
+  <!-- Reusable M3 Expressive Confirm / Prompt Dialog -->
+  <dialog id="m3Modal" class="m3-modal">
+    <form id="m3ModalForm" class="dlg" method="dialog">
+      <h3 id="m3ModalTitle"></h3>
+      <p id="m3ModalMsg" class="small muted m3-modal-msg"></p>
+      <input id="m3ModalInput" type="text" class="hidden" autocomplete="off" spellcheck="false">
+      <div class="row end">
+        <button id="m3ModalCancel" type="button">Cancel</button>
+        <button id="m3ModalOk" type="submit" class="primary">Confirm</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Rich Diff Viewer & Git Actions Dialog -->
+  <dialog id="diffDlg" class="catalog wide">
+    <div class="cat-head">
+      <h3 id="diffTitle">Diff</h3>
+      <div class="row tight">
+        <button id="diffRefresh" class="tonal" type="button">Refresh</button>
+        <button id="diffClose" class="icon-btn" type="button" aria-label="Close">✕</button>
+      </div>
+    </div>
+    <div class="auto-body">
+      <div class="surface-card row wrap" style="justify-content:space-between">
+        <div class="row wrap">
+          <span class="small muted">Branch:</span>
+          <select id="diffBranchSel" style="width:auto;min-width:140px"></select>
+          <button id="diffNewBranch" type="button">＋ New branch</button>
+        </div>
+        <div class="row wrap">
+          <button id="diffStash" type="button">Stash</button>
+          <button id="diffStashPop" type="button">Stash pop</button>
+        </div>
+      </div>
+      <form id="diffCommitForm" class="row">
+        <input id="diffCommitMsg" type="text" placeholder="Commit message (stages all changes)…" autocomplete="off">
+        <button type="submit" class="primary">Commit</button>
+      </form>
+      <div id="diffFiles" class="list"></div>
+      <div id="diffPatch" class="diff-view"></div>
+    </div>
+  </dialog>
+
+  <!-- File & Image Explorer Dialog -->
+  <dialog id="filesDlg" class="catalog wide">
+    <div class="cat-head">
+      <h3 id="filesTitle">Files</h3>
+      <button id="filesClose" class="icon-btn" type="button" aria-label="Close">✕</button>
+    </div>
+    <div class="auto-body">
+      <div id="filesBreadcrumbs" class="row wrap small"></div>
+      <div id="filesList" class="list"></div>
+      <div id="filePreviewBox" class="hidden stack">
+        <div class="row" style="justify-content:space-between">
+          <b id="filePreviewName" class="small"></b>
+          <div class="row tight">
+            <button id="fileSendPath" class="tonal" type="button">Paste path to terminal</button>
+            <button id="filePreviewClose" type="button">Close preview</button>
+          </div>
+        </div>
+        <img id="filePreviewImg" class="file-preview-img hidden" alt="">
+        <pre id="filePreviewCode" class="hidden"></pre>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Multi-Agent Arena Compare Dialog -->
+  <dialog id="arenaDlg">
+    <form id="arenaForm" class="dlg auto-form" style="background:none;border:none;padding:0">
+      <h3 id="arenaTitle" style="margin:0">Multi-Agent Arena</h3>
+      <p class="small muted" style="margin:0">Launch 2 agents on the same prompt in separate git worktrees and watch them side-by-side in Split View.</p>
+      <div class="row wrap">
+        <label>Agent 1 <select name="agent1"></select></label>
+        <label>Model 1 (Ollama / custom) <select name="model1"></select></label>
+      </div>
+      <div class="row wrap">
+        <label>Agent 2 <select name="agent2"></select></label>
+        <label>Model 2 (Ollama / custom) <select name="model2"></select></label>
+      </div>
+      <label>Base branch / commit <input name="base" type="text" placeholder="HEAD" autocomplete="off"></label>
+      <label>Task prompt <textarea name="prompt" rows="4" placeholder="Describe the task both agents should solve…" required></textarea></label>
+      <div class="row end">
+        <button type="button" id="arenaCancel">Cancel</button>
+        <button type="submit" class="primary">Launch Arena</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Prompt Snippets Dialog -->
+  <dialog id="snippetsDlg" class="catalog">
+    <div class="cat-head">
+      <h3>Prompt snippets</h3>
+      <button id="snippetsClose" class="icon-btn" type="button" aria-label="Close">✕</button>
+    </div>
+    <div class="auto-body">
+      <p class="small muted" style="margin:0">Click a snippet to send it to the active terminal.</p>
+      <div id="snippetsList" class="list"></div>
+      <form id="snippetAddForm" class="auto-form">
+        <div class="watch-group-title">Add custom snippet</div>
+        <input name="title" type="text" placeholder="Short label (e.g. Fix lint)" autocomplete="off" required>
+        <textarea name="text" rows="2" placeholder="Prompt or command text…" required></textarea>
+        <div class="row end"><button type="submit" class="primary">Save snippet</button></div>
+      </form>
+    </div>
+  </dialog>
+
+  <!-- Port Preview Proxy Dialog -->
+  <dialog id="previewDlg" class="catalog wide">
+    <div class="cat-head">
+      <h3>Container port preview</h3>
+      <div class="row tight">
+        <button id="previewRefresh" class="tonal" type="button">Scan ports</button>
+        <button id="previewClose" class="icon-btn" type="button" aria-label="Close">✕</button>
+      </div>
+    </div>
+    <div class="auto-body">
+      <p class="small muted" style="margin:0">Access dev servers or DeepSeek Harness web UI running inside the container over your authenticated Agent Hub connection.</p>
+      <div id="previewPorts" class="chips"></div>
+      <form id="previewCustomForm" class="row">
+        <input id="previewPortInput" type="text" inputmode="numeric" placeholder="Port (e.g. 3000, 5173, 8080)" autocomplete="off">
+        <button type="submit" class="primary">Preview inline</button>
+        <button id="previewOpenTab" type="button" class="tonal">Open in tab</button>
+      </form>
+      <div id="previewFrameWrap" class="preview-frame-wrap hidden">
+        <div class="row" style="justify-content:space-between;margin-bottom:6px">
+          <span id="previewFrameUrl" class="small muted"></span>
+          <a id="previewFrameExt" class="btn" target="_blank" rel="noopener noreferrer">Open full tab</a>
+        </div>
+        <iframe id="previewFrame" class="preview-frame" title="Port preview"></iframe>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- GitHub Issues & PRs Browser Dialog -->
+  <dialog id="issuesDlg" class="catalog">
+    <div class="cat-head">
+      <h3 id="issuesTitle">Issues &amp; Pull Requests</h3>
+      <button id="issuesClose" class="icon-btn" type="button" aria-label="Close">✕</button>
+    </div>
+    <div class="auto-body">
+      <div class="row wrap">
+        <label class="small muted">Agent: <select id="issuesAgentSel" style="width:auto;margin-left:4px"></select></label>
+      </div>
+      <div id="issuesList" class="list"></div>
+    </div>
+  </dialog>
+
+  <!-- API Keys & Env Vars Dialog -->
+  <dialog id="envDlg" class="catalog">
+    <div class="cat-head">
+      <h3>API Keys &amp; Environment</h3>
+      <button id="envClose" class="icon-btn" type="button" aria-label="Close">✕</button>
+    </div>
+    <div class="auto-body">
+      <p class="small muted" style="margin:0">Stored with <code>0600</code> permissions in <code>~/.agent-hub/env.json</code> and injected into new terminal sessions and automations immediately — no Docker restart needed.</p>
+      <div id="envList" class="list"></div>
+      <form id="envCustomForm" class="auto-form">
+        <div class="watch-group-title">Add custom variable</div>
+        <div class="row wrap">
+          <input name="key" type="text" placeholder="VAR_NAME" autocomplete="off" required>
+          <input name="value" type="password" placeholder="Value" autocomplete="off" required>
+          <button type="submit" class="primary">Save</button>
+        </div>
+      </form>
+    </div>
+  </dialog>
+
+  <!-- MCP Servers & Agent Instructions Dialog -->
+  <dialog id="cfgDlg" class="catalog wide">
+    <div class="cat-head">
+      <h3>Agent Instructions &amp; MCP Servers</h3>
+      <button id="cfgClose" class="icon-btn" type="button" aria-label="Close">✕</button>
+    </div>
+    <div class="auto-body">
+      <div class="row wrap">
+        <div class="segmented" id="cfgTabs">
+          <button type="button" data-tab="instructions" class="active">Instructions (CLAUDE.md / AGENTS.md)</button>
+          <button type="button" data-tab="mcp">MCP Servers</button>
+        </div>
+      </div>
+      <div id="cfgInstPanel" class="stack">
+        <div class="row wrap">
+          <select id="cfgScope" style="width:auto">
+            <option value="global">Global (~/.claude, ~/.codex, ~/.gemini)</option>
+          </select>
+          <select id="cfgFileName" style="width:auto">
+            <option value="CLAUDE.md">CLAUDE.md</option>
+            <option value="AGENTS.md">AGENTS.md</option>
+            <option value="GEMINI.md">GEMINI.md</option>
+          </select>
+        </div>
+        <div id="cfgInstPath" class="small muted"></div>
+        <textarea id="cfgInstText" rows="14" spellcheck="false" placeholder="# Agent instructions…"></textarea>
+        <div class="row end"><button id="cfgInstSave" type="button" class="primary">Save instructions</button></div>
+      </div>
+      <div id="cfgMcpPanel" class="stack hidden">
+        <div class="row wrap">
+          <select id="cfgMcpTarget" style="width:auto">
+            <option value="claude">Claude Code (~/.claude.json)</option>
+            <option value="gemini">Gemini CLI (~/.gemini/settings.json)</option>
+            <option value="opencode">OpenCode (~/.config/opencode/opencode.json)</option>
+          </select>
+        </div>
+        <div id="cfgMcpPath" class="small muted"></div>
+        <textarea id="cfgMcpJson" rows="14" spellcheck="false" placeholder="{}"></textarea>
+        <div id="cfgMcpMsg" class="small"></div>
+        <div class="row end"><button id="cfgMcpSave" type="button" class="primary">Save MCP JSON</button></div>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Custom OpenAI-Compatible Provider Dialog -->
+  <dialog id="providerDlg">
+    <form id="providerForm" class="dlg auto-form" style="background:none;border:none;padding:0">
+      <h3 style="margin:0">OpenAI-compatible provider</h3>
+      <p class="small muted" style="margin:0">Configure LM Studio, llama.cpp, vLLM, OpenRouter, or DeepSeek API for OpenCode and Pi.</p>
+      <div class="row wrap">
+        <label>Provider ID <input name="id" type="text" placeholder="lmstudio" autocomplete="off" required></label>
+        <label>Display name <input name="name" type="text" placeholder="LM Studio" autocomplete="off" required></label>
+      </div>
+      <label>Base URL (ending with /v1) <input name="baseUrl" type="text" placeholder="http://192.168.1.50:1234/v1" autocomplete="off" required></label>
+      <div class="row wrap">
+        <label>API key (optional) <input name="apiKey" type="password" placeholder="sk-… or leave empty" autocomplete="off"></label>
+        <label>Context window <input name="contextWindow" type="text" inputmode="numeric" value="32768"></label>
+      </div>
+      <div class="row">
+        <button id="providerDiscover" type="button" class="tonal">Discover /models</button>
+        <span id="providerDiscoverMsg" class="small muted"></span>
+      </div>
+      <label>Model IDs (one per line or comma-separated)
+        <textarea name="models" rows="4" placeholder="qwen3-coder-30b&#10;deepseek-chat"></textarea></label>
+      <div class="row end">
+        <button type="button" id="providerCancel">Cancel</button>
+        <button type="submit" class="primary">Save &amp; Apply</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Ollama × CLI Compatibility Lab Dialog -->
+  <dialog id="ollamaLabDlg" class="catalog wide">
+    <div class="cat-head">
+      <div>
+        <h3>Ollama × CLI Compatibility Lab</h3>
+        <div id="labSubtitle" class="small muted">Verify tool calls, file edits, clean completion, and loop-guard safety for every model across every Ollama-capable CLI.</div>
+      </div>
+      <div class="row tight">
+        <button id="labRefresh" class="tonal" type="button">Refresh</button>
+        <button id="labClose" class="icon-btn" type="button" aria-label="Close">✕</button>
+      </div>
+    </div>
+    <div class="auto-body">
+      <div id="labRuntimeWarn" class="usage limited hidden"></div>
+      <div class="surface-card stack">
+        <div class="row wrap" style="justify-content:space-between">
+          <div class="row wrap">
+            <span class="small muted">Test mode:</span>
+            <div id="labModePicker" class="segmented" role="radiogroup" aria-label="Test mode">
+              <button type="button" data-mode="coding" class="active" title="Multi-file repo: search, edit src/server.js cleanly, stop without looping">Full coding edit</button>
+              <button type="button" data-mode="tool_smoke" title="Fast tool-call verification: read secret.txt via a tool and return exact token">Quick tool smoke</button>
+            </div>
+          </div>
+          <div class="row wrap">
+            <button id="labRunAll" type="button" class="primary">Test all models</button>
+            <button id="labApplyPassing" type="button" class="tonal" title="Apply every passing model to the CLIs it passed on">Apply passing</button>
+            <button id="labStop" type="button" class="danger hidden">Stop</button>
+            <button id="labClear" type="button" class="link">Clear results</button>
+          </div>
+        </div>
+        <div class="row wrap">
+          <span class="small muted">CLIs to test:</span>
+          <div id="labCliChips" class="row wrap"></div>
+        </div>
+        <div id="labUnsupportedNote" class="small muted"></div>
+      </div>
+
+      <div id="labLiveBox" class="surface-card lab-live-banner hidden"></div>
+
+      <div id="labMatrixWrap" class="lab-matrix-wrap"></div>
+
+      <div id="labDetailBox" class="surface-card lab-detail hidden"></div>
+    </div>
+  </dialog>
+
+  <script src="/vendor/xterm/lib/xterm.js"></script>
+  <script src="/vendor/addon-fit/lib/addon-fit.js"></script>
+  <script src="/vendor/addon-web-links/lib/addon-web-links.js"></script>
+  <script src="/app.js"></script>
+  <script src="/automations.js"></script>
+  <script src="/system.js"></script>
+  <script src="/features.js"></script>
+</body>
+</html>

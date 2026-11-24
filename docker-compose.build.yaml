@@ -1,0 +1,13 @@
+# Optional compose override for building the image locally instead of pulling from GHCR:
+#   docker compose -f docker-compose.yaml -f docker-compose.build.yaml up -d --build
+services:
+  agent-hub:
+    build:
+      context: .
+      args:
+        PUID: ${PUID:-1000}
+        PGID: ${PGID:-10}
+        ALLOW_SUDO: ${ALLOW_SUDO:-true}
+        INSTALL_KODI: ${INSTALL_KODI:-false}
+        EXTRA_APT_PACKAGES: ${EXTRA_APT_PACKAGES:-}
+    image: agent-hub:local

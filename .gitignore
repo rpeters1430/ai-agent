@@ -1,0 +1,8 @@
+data/
+workspace/
+.env
+.env.*
+!.env.example
+node_modules/
+*.log
+.DS_Store

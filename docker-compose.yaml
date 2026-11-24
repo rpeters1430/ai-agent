@@ -1,0 +1,45 @@
+services:
+  agent-hub:
+    image: ${AGENT_HUB_IMAGE:-ghcr.io/rpeters1430/ai-agent:latest}
+    container_name: agent-hub
+    hostname: agent-hub
+    shm_size: "1gb"
+    stop_grace_period: 15s
+    environment:
+      - TZ=${TZ:-America/Los_Angeles}
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-10}
+      - ALLOW_SUDO=${ALLOW_SUDO:-true}
+      - UI_PASSWORD=${UI_PASSWORD:?set UI_PASSWORD in .env}
+      # GitHub: either set a token here, or leave blank and use "GitHub login" in the UI.
+      - GH_TOKEN=${GITHUB_TOKEN:-}
+      - GIT_USER_NAME=${GIT_USER_NAME:-}
+      - GIT_USER_EMAIL=${GIT_USER_EMAIL:-}
+      # Optional API keys (otherwise sign in to each CLI or configure in System → API Keys)
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      - DEEPSEEK_BASE_URL=${DEEPSEEK_BASE_URL:-}
+      - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY:-}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      # Optional: preset Ollama server (can also be set in the UI)
+      - OLLAMA_URL=${OLLAMA_URL:-}
+    ports:
+      - ${HUB_PORT:-3870}:7681
+    volumes:
+      # Home holds every CLI's auth + config (~/.claude, ~/.codex, ~/.config/opencode, ~/.pi, gh, agy)
+      - ./data/home:/home/dev
+      - ./workspace:/workspace
+    labels:
+      - docktail.service.enable=true
+      - docktail.service.name=agents
+      - docktail.service.port=7681
+      - docktail.service.service-port=443
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
