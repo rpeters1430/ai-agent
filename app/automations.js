@@ -7,6 +7,7 @@ const crypto = require('crypto');
 const { HEADLESS_AGENTS: HEADLESS } = require('./agents');
 const { LOOP_EXIT } = require('./agentstream');
 const { MODEL_RE: DEFAULT_MODEL_RE, OLLAMA_CLI_KEYS } = require('./ollama');
+const { notFound } = require('./errors');
 
 const HUB_DIR = path.join(process.env.HOME || '/home/dev', '.agent-hub');
 const RULES_FILE = path.join(HUB_DIR, 'automations.json');
@@ -593,18 +594,21 @@ function pump() {
 
 const step = (j, s) => { j.step = s; saveJobs(); };
 
-async function runJob(job, handle) {
-  const a = HEADLESS[job.agent];
-  if (!a) throw new Error(`unknown agent ${job.agent}`);
-  const jdir = path.join(JOBS_DIR, job.id);
-  fs.mkdirSync(jdir, { recursive: true, mode: 0o700 });
-  const out = path.join(jdir, 'output.md');
-  const repo = job.repo;
+// Promise-chain mutex: calls with the same key run one after another, in order.
+const locks = new Map();
+function withLock(key, fn) {
+  const run = (locks.get(key) || Promise.resolve()).then(fn);
+  const tail = run.catch(() => {});
+  locks.set(key, tail);
+  tail.then(() => { if (locks.get(key) === tail) locks.delete(key); });
+  return run;
+}
 
-  step(job, 'Preparing the repository');
-  const local = await ensureClone(repo);
+// Fetch, look up the issue/PR and create the job's worktree. Runs under the clone's lock, because two jobs doing
+// `git fetch` / `git worktree add` in one clone at the same time can fail on git's lock files.
+async function prepareCheckout(job, local) {
+  const repo = job.repo;
   const ldir = ctx.repoDir(local);
-  job.local = local;
   await must(git(ldir, ['fetch', 'origin', '--prune'], 10 * 60 * 1000), 'git fetch');
   const meta = await gh('GET', `/repos/${repo}`);
 
@@ -641,6 +645,21 @@ async function runJob(job, handle) {
     startSha = await must(git(ldir, ['rev-parse', `origin/${meta.default_branch}`]), 'find default branch');
     await must(git(ldir, ['worktree', 'add', '-b', branch, ctx.wtDir(local, wt), startSha]), 'git worktree add');
   }
+  return { ldir, meta, item, pr, wt, branch, startSha };
+}
+
+async function runJob(job, handle) {
+  const a = HEADLESS[job.agent];
+  if (!a) throw new Error(`unknown agent ${job.agent}`);
+  const jdir = path.join(JOBS_DIR, job.id);
+  fs.mkdirSync(jdir, { recursive: true, mode: 0o700 });
+  const out = path.join(jdir, 'output.md');
+  const repo = job.repo;
+
+  step(job, 'Preparing the repository');
+  const local = await withLock('clone', () => ensureClone(repo));
+  job.local = local;
+  const { meta, item, pr, wt, branch, startSha } = await withLock(`repo:${local}`, () => prepareCheckout(job, local));
   job.wt = wt; job.branch = branch; job.startSha = startSha;
   const wdir = ctx.wtDir(local, wt);
   job.wtPath = wdir;
@@ -806,11 +825,13 @@ async function identity(dir) {
   return u ? ['-c', `user.name=${u.name || u.login}`, '-c', `user.email=${u.id}+${u.login}@users.noreply.github.com`]
     : ['-c', 'user.name=Agent Hub', '-c', 'user.email=agent-hub@localhost'];
 }
-async function removeWorktree(local, wt, branch) {
-  const ldir = ctx.repoDir(local);
-  await git(ldir, ['worktree', 'remove', '--force', ctx.wtDir(local, wt)]);
-  await git(ldir, ['worktree', 'prune']);
-  if (branch) await git(ldir, ['branch', '-D', branch]);
+function removeWorktree(local, wt, branch) {
+  return withLock(`repo:${local}`, async () => {
+    const ldir = ctx.repoDir(local);
+    await git(ldir, ['worktree', 'remove', '--force', ctx.wtDir(local, wt)]);
+    await git(ldir, ['worktree', 'prune']);
+    if (branch) await git(ldir, ['branch', '-D', branch]);
+  });
 }
 
 // ------------------------------------------------------------ polling ----
@@ -1247,13 +1268,13 @@ function register(app, wrap, helpers) {
   app.post('/api/automations/watched-repos/:owner/:name/run', wrap(async (req, res) => {
     const repo = normalizeRepo(`${req.params.owner}/${req.params.name}`);
     const entry = (data.watchedRepos || []).find((w) => w.repo.toLowerCase() === repo.toLowerCase());
-    if (!entry) throw new Error('watched repository not found');
+    if (!entry) throw notFound('watched repository not found');
     const n = Number(req.body?.number) || 0;
     if (!n || n < 1) throw new Error('Enter an issue or PR number');
     const w = watchConfig();
     if (!w.agent || !HEADLESS[w.agent]) w.agent = defaultAgent();
     const profile = req.body?.profileId ? (w.profiles || []).find((p) => p.id === req.body.profileId) : null;
-    if (req.body?.profileId && !profile) throw new Error('label profile not found');
+    if (req.body?.profileId && !profile) throw notFound('label profile not found');
     const kind = req.body?.action === 'review' ? 'review' : 'fix_issue';
     const job = profile
       ? enqueueWatchProfile(entry, w, profile, { number: n, trigger: 'run by hand', instructions: String(req.body?.instructions || '').slice(0, 8000) })
@@ -1270,7 +1291,7 @@ function register(app, wrap, helpers) {
   app.post('/api/automations/rules', wrap(async (req, res) => {
     const b = req.body || {};
     const old = b.id ? data.rules.find((r) => r.id === b.id) : null;
-    if (b.id && !old) throw new Error('rule not found');
+    if (b.id && !old) throw notFound('rule not found');
     const rule = cleanRule(b, old || { id: newId(), createdAt: Date.now(), state: { seen: {} } });
     // Check access and make sure the trigger label exists, so it shows up in GitHub's label picker.
     const meta = await gh('GET', `/repos/${rule.repo}`).catch((e) => { throw new Error(e.status === 404 ? `Can't see ${rule.repo} with the connected GitHub account` : e.message); });
@@ -1295,7 +1316,7 @@ function register(app, wrap, helpers) {
   // Run a rule by hand, optionally on one issue/PR number.
   app.post('/api/automations/rules/:id/run', wrap(async (req, res) => {
     const rule = data.rules.find((r) => r.id === req.params.id);
-    if (!rule) throw new Error('rule not found');
+    if (!rule) throw notFound('rule not found');
     const n = Number(req.body?.number) || 0;
     let t;
     if (rule.trigger === 'schedule') t = { kind: 'task', trigger: 'run by hand' };
@@ -1311,7 +1332,7 @@ function register(app, wrap, helpers) {
 
   app.post('/api/automations/jobs/:id/cancel', wrap(async (req, res) => {
     const j = jobs.find((x) => x.id === req.params.id);
-    if (!j) throw new Error('job not found');
+    if (!j) throw notFound('job not found');
     if (j.status === 'queued') { j.status = 'cancelled'; j.endedAt = Date.now(); saveJobs(); }
     else if (running.has(j.id)) { running.get(j.id).cancel = true; if (j.session) await ctx.run('tmux', ['kill-session', '-t', `=${j.session}`]); }
     res.json({ ok: true });
@@ -1319,7 +1340,7 @@ function register(app, wrap, helpers) {
 
   app.post('/api/automations/jobs/:id/retry', wrap(async (req, res) => {
     const j = jobs.find((x) => x.id === req.params.id);
-    if (!j) throw new Error('job not found');
+    if (!j) throw notFound('job not found');
     let job;
     if (j.source === 'watch' || String(j.ruleId || '').startsWith('watch:')) {
       const entry = (data.watchedRepos || []).find((w) => w.repo.toLowerCase() === j.repo.toLowerCase()) || { repo: j.repo };
@@ -1346,7 +1367,7 @@ function register(app, wrap, helpers) {
 
   app.get('/api/automations/jobs/:id/log', wrap(async (req, res) => {
     const j = jobs.find((x) => x.id === req.params.id);
-    if (!j) throw new Error('job not found');
+    if (!j) throw notFound('job not found');
     const d = path.join(JOBS_DIR, j.id);
     res.json({ log: stripAnsi(readIf(path.join(d, 'log.txt'))), output: readIf(path.join(d, 'output.md')), prompt: readIf(path.join(d, 'prompt.md')) });
   }));
@@ -1453,6 +1474,7 @@ function register(app, wrap, helpers) {
 module.exports = {
   register,
   cleanRule,
+  withLock,
   cleanWatch,
   parseReviewVerdict,
   buildReviewFollowUp,

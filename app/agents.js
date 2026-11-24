@@ -94,12 +94,10 @@ const AGENTS = {
     headless: (m, g) => {
       const base = m ? ollama.ollamaUrl() : '';
       if (m && base) {
-        const patch = path.join(path.dirname(ollama.DSH_PATCH_FILE), `dsh-auto-${Date.now()}-${Math.random().toString(16).slice(2, 6)}.yml`);
-        try {
-          fs.mkdirSync(path.dirname(patch), { recursive: true });
-          fs.writeFileSync(patch, ollama.buildDshPatchYaml(base, [{ name: m }], m, { disableTitleLlm: true }), { mode: 0o600 });
-        } catch {}
-        return guarded('dsh', g, `env -u DEEPSEEK_BASE_URL -u DEEPSEEK_API_KEY OLLAMA_API_KEY='ollama' dsh --profile headless --patch ${shQ(patch)}${g ? ' --json' : ''} --approval-policy never "$P"`);
+        // The run script writes the patch into its own job folder ($JOBDIR), so it's removed with the job.
+        const yaml = ollama.buildDshPatchYaml(base, [{ name: m }], m, { disableTitleLlm: true });
+        const write = `DSH_PATCH="\${JOBDIR:-$(mktemp -d)}/dsh-ollama.yml"; (umask 077; printf '%s' ${shQ(yaml)} > "$DSH_PATCH")`;
+        return `${write} && ${guarded('dsh', g, `env -u DEEPSEEK_BASE_URL -u DEEPSEEK_API_KEY OLLAMA_API_KEY='ollama' dsh --profile headless --patch "$DSH_PATCH"${g ? ' --json' : ''} --approval-policy never "$P"`)}`;
       }
       return guarded('dsh', g, `env -u DEEPSEEK_BASE_URL dsh --profile headless${g ? ' --json' : ''} --approval-policy never "$P"`);
     },
@@ -142,4 +140,12 @@ const UPDATABLE_TOOLS = [
   ...EXTRA_TOOLS,
 ];
 
-module.exports = { AGENTS, LOGINS, HEADLESS_AGENTS, UPDATABLE_TOOLS, EXTRA_TOOLS };
+// Older versions wrote one ~/.agent-hub/dsh-auto-*.yml per DeepSeek Harness run and never removed them.
+function cleanupLegacyDshPatches() {
+  const dir = path.dirname(ollama.DSH_PATCH_FILE);
+  try {
+    for (const f of fs.readdirSync(dir)) if (/^dsh-auto-.*\.yml$/.test(f)) fs.rmSync(path.join(dir, f), { force: true });
+  } catch {}
+}
+
+module.exports = { AGENTS, LOGINS, HEADLESS_AGENTS, UPDATABLE_TOOLS, EXTRA_TOOLS, cleanupLegacyDshPatches };

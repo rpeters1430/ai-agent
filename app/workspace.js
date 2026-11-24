@@ -6,6 +6,7 @@ const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 const { AGENTS } = require('./agents');
+const { notFound } = require('./errors');
 
 const HOME = process.env.HOME || '/home/dev';
 const HUB_DIR = path.join(HOME, '.agent-hub');
@@ -155,7 +156,7 @@ function register(app, wrap, helpers) {
   app.get('/api/repos/:name/diff', wrap(async (req, res) => {
     const wt = req.query.wt ? String(req.query.wt) : '';
     const dir = targetDir(req.params.name, wt);
-    if (!fs.existsSync(dir)) throw new Error('not found');
+    if (!fs.existsSync(dir)) throw notFound();
     const [br, brList, statusR, diffHead, diffStaged, statR] = await Promise.all([
       run('git', ['-C', dir, 'symbolic-ref', '--short', '-q', 'HEAD']),
       run('git', ['-C', dir, 'branch', '--format=%(refname:short)']),
@@ -184,7 +185,7 @@ function register(app, wrap, helpers) {
   app.post('/api/repos/:name/git/action', wrap(async (req, res) => {
     const wt = req.body?.wt ? String(req.body.wt) : '';
     const dir = targetDir(req.params.name, wt);
-    if (!fs.existsSync(dir)) throw new Error('not found');
+    if (!fs.existsSync(dir)) throw notFound();
     const action = String(req.body?.action || '');
     if (action === 'commit') {
       const msg = String(req.body?.message || '').trim();
@@ -232,7 +233,7 @@ function register(app, wrap, helpers) {
     const wt = req.query.wt ? String(req.query.wt) : '';
     const rel = String(req.query.dir || '');
     const root = targetDir(req.params.name, wt);
-    if (!fs.existsSync(root)) throw new Error('not found');
+    if (!fs.existsSync(root)) throw notFound();
     const dir = safeSubpath(root, rel);
     const entries = fs.readdirSync(dir, { withFileTypes: true })
       .filter((e) => e.name !== '.git')
