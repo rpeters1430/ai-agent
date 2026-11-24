@@ -16,7 +16,7 @@ const CODEX_CONFIG_FILE = path.join(HOME, '.codex', 'config.toml');
 const DSH_PATCH_FILE = path.join(HUB_DIR, 'dsh-ollama.yml');
 const PROVIDER_ID = 'ollama';
 const CODEX_PROVIDER_ID = 'ollama-hub'; // Codex 0.171 reserves "ollama" as a built-in provider ID
-const MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._\-\/]*(:[A-Za-z0-9._\-]+)?$/;
+const MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._/-]*(:[A-Za-z0-9._-]+)?$/;
 const DEFAULT_OLLAMA_CTX = 8192; // what Ollama uses when nothing sets num_ctx (varies by version/VRAM)
 
 const OLLAMA_CLIS = {

@@ -175,7 +175,7 @@ function pruneOrphanJobDirs() {
   } catch {}
 }
 const readIf = (f, max = 200000) => { try { const s = fs.readFileSync(f, 'utf8'); return s.length > max ? s.slice(-max) : s; } catch { return ''; } };
-const stripAnsi = (s) => s.replace(/\x1b\[[0-9;?]*[ -\/]*[@-~]|\x1b\][^\x07\x1b]*(\x07|\x1b\\)|\x1b[@-Z\\-_]|\r(?!\n)/g, '');
+const stripAnsi = (s) => s.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(\x07|\x1b\\)|\x1b[@-Z\\-_]|\r(?!\n)/g, '');
 const clip = (s, n) => (s && s.length > n ? s.slice(0, n) + '\n…(truncated)' : s || '');
 function clipBytes(s, maxBytes) {
   if (!s) return '';
@@ -1157,7 +1157,7 @@ function cleanRule(b, old = {}) {
 }
 
 function publicJob(j) {
-  const { ruleInstructions, instructions, ...rest } = j;
+  const { ruleInstructions: _ruleInstructions, instructions: _instructions, ...rest } = j; // keep prompts out of the job list
   return { ...rest, live: !!j.session && j.status === 'running' };
 }
 

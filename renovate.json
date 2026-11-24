@@ -1,6 +1,15 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:recommended"
+    "config:recommended",
+    "docker:pinDigests",
+    "helpers:pinGitHubActionDigests"
+  ],
+  "packageRules": [
+    {
+      "description": "Group lint tooling updates into one PR",
+      "matchPackageNames": ["eslint", "@eslint/js", "globals"],
+      "groupName": "eslint"
+    }
   ]
 }

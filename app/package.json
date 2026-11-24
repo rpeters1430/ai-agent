@@ -6,7 +6,9 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "lint": "eslint .",
+    "check": "npm run lint && npm test"
   },
   "dependencies": {
     "@xterm/addon-fit": "0.11.0",
@@ -15,5 +17,13 @@
     "express": "4.22.3",
     "node-pty": "1.0.0",
     "ws": "8.23.0"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.5",
+    "eslint": "9.39.5",
+    "globals": "17.14.0"
   }
 }
