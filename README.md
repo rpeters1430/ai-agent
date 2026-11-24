@@ -171,7 +171,10 @@ docker-compose.yaml
 entrypoint.sh        fixes volume ownership, git/gh setup, starts the UI as `dev`
 tmux.conf
 app/server.js        Express API + WebSocket ↔ node-pty ↔ tmux attach
-app/automations.js   GitHub polling + unattended agent runs
+app/automations/     GitHub automations, split by concern:
+                       store (state + files), validate, github (REST client), prompts,
+                       queue (jobs + follow-ups), runner (one job: worktree → agent → PR/review),
+                       polling, routes
 app/tools.js         CLI versions and updates
 app/notify.js        ntfy / Discord / webhook notifications
 app/ollama.js        Ollama connection, catalog, OpenCode/Pi config

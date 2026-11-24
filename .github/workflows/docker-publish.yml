@@ -43,6 +43,9 @@ jobs:
       - name: Install app dependencies
         run: npm ci --no-audit --no-fund
 
+      - name: Install tmux (used by the automation runner tests)
+        run: command -v tmux || (sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends tmux)
+
       - name: Syntax check (backend + frontend)
         run: for f in *.js public/*.js test/*.js; do node --check "$f"; done
 

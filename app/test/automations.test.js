@@ -311,8 +311,10 @@ test('watched-repos routes create labels, persist watch profile, toggle, and del
   process.env.HOME = tmpHome;
   process.env.GITHUB_API_URL = `http://127.0.0.1:${ghPort}`;
 
-  const modPath = require.resolve('../automations');
-  delete require.cache[modPath];
+  // Automations is split into modules that read HOME when loaded: drop all of them so they pick up tmpHome.
+  const autoDir = require('path').dirname(require.resolve('../automations'));
+  const dropAutomations = () => { for (const k of Object.keys(require.cache)) if (k.startsWith(autoDir + require('path').sep)) delete require.cache[k]; };
+  dropAutomations();
   const freshAuto = require('../automations');
 
   const routes = new Map();
@@ -415,7 +417,7 @@ test('watched-repos routes create labels, persist watch profile, toggle, and del
     ghServer.close();
     process.env.HOME = prevHome;
     if (prevApi === undefined) delete process.env.GITHUB_API_URL; else process.env.GITHUB_API_URL = prevApi;
-    delete require.cache[modPath];
+    dropAutomations();
     fs.rmSync(tmpHome, { recursive: true, force: true });
   }
 });
