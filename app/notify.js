@@ -2,6 +2,7 @@
 // Push notifications (ntfy, Discord, generic webhook) for finished automations and agents that went quiet.
 const fs = require('fs');
 const path = require('path');
+const tmuxfmt = require('./tmuxfmt');
 
 const FILE = path.join(process.env.HOME || '/home/dev', '.agent-hub', 'notify.json');
 const DEFAULTS = {
@@ -86,11 +87,11 @@ function jobEnded(j) {
 // ---- "went quiet": a session produced output, then nothing for N minutes (usually waiting for you) ----
 const seen = new Map(); // session -> last activity we've already notified about (or baseline)
 async function checkIdle() {
-  const r = await ctx.run('tmux', ['list-sessions', '-F', '#{session_name}\t#{window_activity}\t#{session_created}\t#{@label}\t#{@repo}\t#{@wt}\t#{@agent}']);
+  const r = await ctx.run('tmux', tmuxfmt.listArgs(['session_name', 'window_activity', 'session_created', '@label', '@repo', '@wt', '@agent']));
   const now = Math.floor(Date.now() / 1000);
   const alive = new Set();
   for (const line of (r.ok ? r.stdout.trim().split('\n') : []).filter(Boolean)) {
-    const [name, act, created, label, repo, wt, agent] = line.split('\t');
+    const [name, act, created, label, repo, wt, agent] = tmuxfmt.parseLine(line);
     alive.add(name);
     const activity = Number(act);
     if (!seen.has(name)) { seen.set(name, activity); continue; }     // baseline: don't notify for old silence
@@ -112,7 +113,7 @@ async function checkIdle() {
 function register(app, wrap, helpers) {
   ctx = helpers;
   load();
-  setInterval(() => checkIdle().catch(() => {}), 20000);
+  setInterval(() => checkIdle().catch(() => {}), 20000).unref();
 
   app.get('/api/notify', wrap(async (req, res) => {
     res.json({ ...cfg, ntfyToken: cfg.ntfyToken ? '••••' : '', enabled: enabled(), last: lastSent });
