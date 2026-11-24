@@ -1,4 +1,9 @@
-'use strict';
+// System tab: CLI versions and updates, notification settings.
+import { $, api, busy, h, m3Confirm, setRailBadge } from './core.js';
+import { loadSessions, open, sessions } from './workspace.js';
+import { attach } from './terminals.js';
+import { closeMobileSheet } from './nav.js';
+
 // System section: CLI versions/updates and notification settings (uses h, api, busy, attach, loadSessions, sessions, open from app.js)
 
 async function loadTools(fresh) {
@@ -38,14 +43,6 @@ async function runUpdate(keys) {
   }, 4000);
 }
 
-$('#updateAll').addEventListener('click', (e) => busy(e.target, () => runUpdate(null)));
-$('#refreshTools').addEventListener('click', (e) => busy(e.target, () => loadTools(true)));
-$('#resetTools').addEventListener('click', (e) => busy(e.target, async () => {
-  if (!(await m3Confirm('Reset CLIs to image versions', 'Remove the updated CLIs (and anything else installed with npm -g) from ~/.local/tools and go back to the versions built into the image?', { okLabel: 'Reset', danger: true }))) return;
-  await api('POST', '/api/tools/reset'); await loadTools(true);
-}));
-
-// ------------------------------------------------------- notifications ----
 let notifyState = {};
 async function loadNotify() {
   notifyState = await api('GET', '/api/notify');
@@ -65,20 +62,32 @@ const notifyBody = (f) => ({
   ntfyUrl: f.ntfyUrl.value, ntfyToken: f.ntfyToken.value, discordUrl: f.discordUrl.value, webhookUrl: f.webhookUrl.value, hubUrl: f.hubUrl.value,
   events: { jobSucceeded: f.jobSucceeded.checked, jobFailed: f.jobFailed.checked, idle: f.idle.checked }, idleMinutes: Number(f.idleMinutes.value),
 });
-$('#openNotify').addEventListener('click', (e) => busy(e.target, async () => { await loadNotify(); fillNotifyForm(); closeMobileSheet(); $('#notifyDlg').showModal(); }));
-$('#notifyClose').addEventListener('click', () => $('#notifyDlg').close());
-$('#notifyForm').addEventListener('submit', (e) => {
-  e.preventDefault();
-  busy(e.target.querySelector('[type=submit]'), async () => {
-    await api('POST', '/api/notify', notifyBody(e.target)); await loadNotify();
-    $('#notifyMsg').textContent = 'Saved.';
+
+// Start-up code (wires the UI). main.js calls this once every module has loaded.
+function init() {
+  $('#updateAll').addEventListener('click', (e) => busy(e.target, () => runUpdate(null)));
+  $('#refreshTools').addEventListener('click', (e) => busy(e.target, () => loadTools(true)));
+  $('#resetTools').addEventListener('click', (e) => busy(e.target, async () => {
+    if (!(await m3Confirm('Reset CLIs to image versions', 'Remove the updated CLIs (and anything else installed with npm -g) from ~/.local/tools and go back to the versions built into the image?', { okLabel: 'Reset', danger: true }))) return;
+    await api('POST', '/api/tools/reset'); await loadTools(true);
+  }));
+  $('#openNotify').addEventListener('click', (e) => busy(e.target, async () => { await loadNotify(); fillNotifyForm(); closeMobileSheet(); $('#notifyDlg').showModal(); }));
+  $('#notifyClose').addEventListener('click', () => $('#notifyDlg').close());
+  $('#notifyForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    busy(e.target.querySelector('[type=submit]'), async () => {
+      await api('POST', '/api/notify', notifyBody(e.target)); await loadNotify();
+      $('#notifyMsg').textContent = 'Saved.';
+    });
   });
-});
-$('#notifyTest').addEventListener('click', (e) => busy(e.target, async () => {
-  const f = $('#notifyForm');
-  await api('POST', '/api/notify', notifyBody(f));
-  const r = await api('POST', '/api/notify/test');
-  await loadNotify();
-  const msg = $('#notifyMsg'); msg.replaceChildren();
-  for (const x of r.sent) msg.append(h('div', { class: x.ok ? '' : 'err' }, `${x.name}: ${x.ok ? 'sent ✓' : x.error}`));
-}));
+  $('#notifyTest').addEventListener('click', (e) => busy(e.target, async () => {
+    const f = $('#notifyForm');
+    await api('POST', '/api/notify', notifyBody(f));
+    const r = await api('POST', '/api/notify/test');
+    await loadNotify();
+    const msg = $('#notifyMsg'); msg.replaceChildren();
+    for (const x of r.sent) msg.append(h('div', { class: x.ok ? '' : 'err' }, `${x.name}: ${x.ok ? 'sent ✓' : x.error}`));
+  }));
+}
+
+export { loadTools, loadNotify, init };

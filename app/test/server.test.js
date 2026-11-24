@@ -20,9 +20,19 @@ Object.assign(process.env, {
   HOME: path.join(TMP, 'home'), WORKSPACE: path.join(TMP, 'workspace'), UI_PASSWORD: PASSWORD,
   TRUST_PROXY: 'true', // lets each test sign in from its own X-Forwarded-For "client", so rate limits don't collide
   GH_TOKEN: '', GITHUB_TOKEN: '', GIT_CONFIG_GLOBAL: GITCONFIG, GIT_CONFIG_NOSYSTEM: '1', TMUX_TMPDIR: path.join(TMP, 'tmux'),
+  HISTFILE: '/dev/null', // test shells must not write into HOME while it is being deleted
 });
 const WebSocket = require('ws');
 const hub = require('../server');
+
+// Stop this test's tmux server and wait until it has really exited (its shells may still be finishing).
+async function killTmux() {
+  try { execFileSync('tmux', ['kill-server'], { stdio: 'ignore' }); } catch { return; }
+  for (let i = 0; i < 50; i++) {
+    try { execFileSync('tmux', ['has-session'], { stdio: 'ignore' }); } catch { return; }
+    await new Promise((r) => setTimeout(r, 100));
+  }
+}
 
 let base = '', origin = '';
 test.before(async () => {
@@ -32,8 +42,8 @@ test.before(async () => {
 });
 test.after(async () => {
   await hub.stop();
-  if (hasTmux) try { execFileSync('tmux', ['kill-server'], { stdio: 'ignore' }); } catch {}
-  fs.rmSync(TMP, { recursive: true, force: true });
+  if (hasTmux) await killTmux();
+  fs.rmSync(TMP, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); // the killed shells may still be writing history
 });
 
 let ipSeq = 0;
@@ -185,7 +195,9 @@ test('unknown routes and static UI', async () => {
   const cookie = await login();
   const page = await call('GET', '/', { cookie });
   assert.equal(page.status, 200);
-  assert.match(page.text, /<script src="\/app\.js"><\/script>/);
+  assert.match(page.text, /<script type="module" src="\/js\/main\.js"><\/script>/);
+  const main = await call('GET', '/js/main.js', { cookie });
+  assert.match(main.headers.get('content-type'), /javascript/);
   assert.match(page.headers.get('content-security-policy'), /frame-ancestors 'none'/);
   assert.equal(page.headers.get('x-frame-options'), 'DENY');
   assert.equal((await call('GET', '/vendor/xterm/lib/xterm.js', { cookie })).status, 200);

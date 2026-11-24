@@ -1,4 +1,11 @@
-'use strict';
+// Automations tab: watched repositories, label profiles, rules, the job list and its live view.
+import { state } from './state.js';
+import { $, api, busy, h, m3Confirm, m3Prompt, setRailBadge, showDialog } from './core.js';
+import { localRepos, renderGh, sessions } from './workspace.js';
+import { attach, launch } from './terminals.js';
+import { ollamaState } from './ollama.js';
+import { closeMobileSheet } from './nav.js';
+
 // Automations UI (uses h, api, busy, showDialog, attach, launch, ghRepos, localRepos, ollamaState, renderGh from app.js)
 
 let autoState = { rules: [], watchedRepos: [], watch: {}, models: {}, jobs: [], agents: {}, settings: {}, poll: {} };
@@ -115,7 +122,7 @@ async function loadAuto() {
   autoState = await api('GET', '/api/automations');
   renderAutoSummary();
   if ($('#autoDlg').open) { renderAutoDialog(); loadAutoStats(); }
-  if (typeof renderGh === 'function' && ghRepos.length) renderGh();
+  if (typeof renderGh === 'function' && state.ghRepos.length) renderGh();
 }
 
 function jobActions(j, small) {
@@ -178,7 +185,7 @@ function renderAutoSummary() {
 function fillRepoDatalist() {
   const seen = new Set();
   const names = [];
-  for (const r of ghRepos || []) {
+  for (const r of state.ghRepos || []) {
     if (r.full_name && !seen.has(r.full_name.toLowerCase())) { seen.add(r.full_name.toLowerCase()); names.push(r.full_name); }
   }
   for (const r of localRepos || []) {
@@ -305,7 +312,6 @@ async function showJobLog(j) {
   showDialog(jobTitle(j), parts.join('\n\n'));
 }
 
-// --------------------------------------------------- agent/model selects ----
 function fillAgentSelect(sel, selected, allowSameAsWorker) {
   const agents = Object.entries(autoState.agents).filter(([, a]) => a.installed);
   const opts = [];
@@ -332,7 +338,6 @@ function fillModelSelect(sel, agentKey, cur) {
   sel.value = cur || '';
 }
 
-// --------------------------------------------------------- watch form ----
 function nextUnusedLabel(candidates) {
   const f = $('#watchForm');
   const used = new Set([
@@ -468,114 +473,6 @@ function openWatchForm() {
   f.classList.remove('hidden');
 }
 
-$('#addOpencodeProfile').addEventListener('click', () => {
-  const preferredAgent = autoState.agents.opencode?.installed ? 'opencode' : (autoState.agents.pi?.installed ? 'pi' : Object.keys(autoState.agents)[0] || 'opencode');
-  const localModels = appliedModels(preferredAgent);
-  draftWatchProfiles.push({
-    id: '',
-    label: nextUnusedLabel(['opencode-fix', 'local-fix', 'llm-fix']),
-    action: 'fix',
-    agent: preferredAgent,
-    model: localModels[0] || '',
-    autoReview: true,
-    reviewAgent: '',
-    reviewModel: '',
-    autoFixRounds: 0,
-    enabled: true,
-  });
-  renderWatchProfiles();
-  syncWatchForm();
-});
-
-$('#addCustomProfile').addEventListener('click', () => {
-  const installed = Object.entries(autoState.agents).filter(([, a]) => a.installed).map(([k]) => k);
-  const pick = installed.find((k) => k !== $('#watchForm').agent.value) || installed[0] || 'claude';
-  draftWatchProfiles.push({
-    id: '',
-    label: nextUnusedLabel([`${pick}-fix`, 'custom-fix']),
-    action: 'fix',
-    agent: pick,
-    model: appliedModels(pick)[0] || '',
-    autoReview: true,
-    reviewAgent: '',
-    reviewModel: '',
-    autoFixRounds: 0,
-    enabled: true,
-  });
-  renderWatchProfiles();
-  syncWatchForm();
-});
-
-$('#watchCfgToggle').addEventListener('click', () => {
-  const f = $('#watchForm');
-  if (f.classList.contains('hidden')) openWatchForm();
-  else f.classList.add('hidden');
-});
-$('#watchCancel').addEventListener('click', () => $('#watchForm').classList.add('hidden'));
-$('#watchForm').agent.addEventListener('change', () => { fillModelSelect($('#watchForm').model, $('#watchForm').agent.value, ''); syncWatchForm(); });
-$('#watchForm').reviewAgent.addEventListener('change', () => { fillModelSelect($('#watchForm').reviewModel, $('#watchForm').reviewAgent.value, ''); syncWatchForm(); });
-for (const name of ['fixEnabled', 'autoReviewAfterFix', 'autoFixRounds', 'reviewLabelEnabled', 'reviewNewPrs', 'mentionEnabled']) {
-  $('#watchForm')[name].addEventListener('change', syncWatchForm);
-}
-for (const name of ['fixLabel', 'reviewLabel']) {
-  $('#watchForm')[name].addEventListener('input', syncWatchForm);
-}
-
-$('#watchForm').addEventListener('submit', (e) => {
-  e.preventDefault();
-  const f = e.target, btn = f.querySelector('button[type=submit]');
-  busy(btn, async () => {
-    const body = {
-      agent: f.agent.value,
-      model: supportsLocalModel(f.agent.value) ? f.model.value : '',
-      reviewAgent: f.reviewAgent.value,
-      reviewModel: f.reviewAgent.value && supportsLocalModel(f.reviewAgent.value) ? f.reviewModel.value : '',
-      fixEnabled: f.fixEnabled.checked,
-      fixLabel: f.fixLabel.value,
-      autoReviewAfterFix: f.autoReviewAfterFix.checked,
-      autoFixRounds: Number(f.autoFixRounds.value) || 0,
-      draft: f.draft.checked,
-      reviewLabelEnabled: f.reviewLabelEnabled.checked,
-      reviewLabel: f.reviewLabel.value,
-      reviewNewPrs: f.reviewNewPrs.checked,
-      rereviewOnPush: f.rereviewOnPush.checked,
-      autoFixCi: f.autoFixCi.checked,
-      mentionEnabled: f.mentionEnabled.checked,
-      keyword: f.keyword.value,
-      allowOutside: f.allowOutside.checked,
-      instructions: f.instructions.value,
-      profiles: draftWatchProfiles.map((p) => ({
-        id: p.id || undefined,
-        label: p.label,
-        action: p.action,
-        agent: p.agent,
-        model: supportsLocalModel(p.agent) ? (p.model || '') : '',
-        autoReview: p.action !== 'review' && p.autoReview !== false,
-        reviewAgent: p.action !== 'review' && p.autoReview !== false ? (p.reviewAgent || '') : '',
-        reviewModel: p.action !== 'review' && p.autoReview !== false && p.reviewAgent && supportsLocalModel(p.reviewAgent) ? (p.reviewModel || '') : '',
-        autoFixRounds: p.action !== 'review' && p.autoReview !== false ? (Number(p.autoFixRounds) || 0) : 0,
-        enabled: p.enabled !== false,
-      })),
-    };
-    const r = await api('POST', '/api/automations/watch', body);
-    f.classList.add('hidden');
-    await loadAuto();
-    if (r.warnings?.length) showDialog('Saved, with warnings', r.warnings.join('\n'));
-  });
-});
-
-$('#watchAddForm').addEventListener('submit', (e) => {
-  e.preventDefault();
-  const f = e.target, btn = f.querySelector('button[type=submit]');
-  busy(btn, async () => {
-    const r = await api('POST', '/api/automations/watched-repos', { repo: f.repo.value });
-    f.repo.value = '';
-    await loadAuto();
-    if (r.warnings?.length) showDialog('Watching, with warnings', r.warnings.join('\n'));
-  });
-});
-
-// ---------------------------------------------------------- rule form ----
 function syncForm() {
   const f = $('#autoForm'), p = PRESETS[f.preset.value];
   const show = (key, on) => f.querySelectorAll(`[data-for="${key}"]`).forEach((el) => el.classList.toggle('hidden', !on));
@@ -602,7 +499,7 @@ async function openRuleForm(rule) {
   editingRule = rule || null;
   const f = $('#autoForm');
   f.reset();
-  if (!ghRepos.length) { try { ghRepos = (await api('GET', '/api/repos/github')).repos; } catch {} }
+  if (!state.ghRepos.length) { try { state.ghRepos = (await api('GET', '/api/repos/github')).repos; } catch {} }
   fillRepoDatalist();
   const p = rule ? presetOf(rule) : 'fix_label';
   f.preset.value = p;
@@ -627,68 +524,180 @@ async function openRuleForm(rule) {
   f.repo.focus();
 }
 
-$('#autoForm').preset.addEventListener('change', () => {
-  const f = $('#autoForm'), p = PRESETS[f.preset.value];
-  if (p.label && (!f.label.value || Object.values(PRESETS).some((x) => x.label === f.label.value))) f.label.value = p.label;
-  syncForm();
-});
-$('#autoForm').agent.addEventListener('change', () => { fillModelSelect($('#autoForm').model, $('#autoForm').agent.value, ''); syncForm(); });
-$('#autoForm').reviewAgent.addEventListener('change', () => { fillModelSelect($('#autoForm').reviewModel, $('#autoForm').reviewAgent.value, ''); syncForm(); });
-$('#autoForm').autoReview.addEventListener('change', syncForm);
-$('#autoCancel').addEventListener('click', () => { $('#autoForm').classList.add('hidden'); editingRule = null; });
-$('#autoForm').addEventListener('submit', (e) => {
-  e.preventDefault();
-  const f = e.target, btn = f.querySelector('button[type=submit]');
-  busy(btn, async () => {
-    const p = PRESETS[f.preset.value];
-    const body = {
-      ...(editingRule ? { id: editingRule.id, enabled: editingRule.enabled } : {}),
-      trigger: p.trigger, action: p.action, repo: f.repo.value, label: f.label.value, keyword: f.keyword.value,
-      everyHours: Number(f.everyHours.value), cron: f.cron.value.trim(), agent: f.agent.value, model: supportsLocalModel(f.agent.value) ? f.model.value : '',
-      autoReview: f.autoReview.checked,
-      reviewAgent: f.autoReview.checked ? f.reviewAgent.value : '',
-      reviewModel: f.autoReview.checked && f.reviewAgent.value && supportsLocalModel(f.reviewAgent.value) ? f.reviewModel.value : '',
-      autoFixRounds: f.autoReview.checked ? (Number(f.autoFixRounds.value) || 0) : 0,
-      instructions: f.instructions.value, draft: f.draft.checked, rereview: f.rereview.checked, allowOutside: f.allowOutside.checked,
-      name: f.name.value,
-    };
-    const r = await api('POST', '/api/automations/rules', body);
-    f.classList.add('hidden'); editingRule = null;
-    await loadAuto();
-    if (r.warnings?.length) showDialog('Saved, with warnings', r.warnings.join('\n'));
+// Start-up code (wires the UI). main.js calls this once every module has loaded.
+function init() {
+  $('#addOpencodeProfile').addEventListener('click', () => {
+    const preferredAgent = autoState.agents.opencode?.installed ? 'opencode' : (autoState.agents.pi?.installed ? 'pi' : Object.keys(autoState.agents)[0] || 'opencode');
+    const localModels = appliedModels(preferredAgent);
+    draftWatchProfiles.push({
+      id: '',
+      label: nextUnusedLabel(['opencode-fix', 'local-fix', 'llm-fix']),
+      action: 'fix',
+      agent: preferredAgent,
+      model: localModels[0] || '',
+      autoReview: true,
+      reviewAgent: '',
+      reviewModel: '',
+      autoFixRounds: 0,
+      enabled: true,
+    });
+    renderWatchProfiles();
+    syncWatchForm();
   });
-});
 
-$('#autoSettings').addEventListener('submit', (e) => {
-  e.preventDefault();
-  const f = e.target;
-  busy(f.querySelector('button'), async () => {
-    await api('POST', '/api/automations/settings', { pollSeconds: Number(f.pollSeconds.value), maxConcurrent: Number(f.maxConcurrent.value), timeoutMinutes: Number(f.timeoutMinutes.value), loopLimit: Number(f.loopLimit.value), paused: f.paused.checked });
-    f.querySelector('button').blur();
-    await loadAuto();
+  $('#addCustomProfile').addEventListener('click', () => {
+    const installed = Object.entries(autoState.agents).filter(([, a]) => a.installed).map(([k]) => k);
+    const pick = installed.find((k) => k !== $('#watchForm').agent.value) || installed[0] || 'claude';
+    draftWatchProfiles.push({
+      id: '',
+      label: nextUnusedLabel([`${pick}-fix`, 'custom-fix']),
+      action: 'fix',
+      agent: pick,
+      model: appliedModels(pick)[0] || '',
+      autoReview: true,
+      reviewAgent: '',
+      reviewModel: '',
+      autoFixRounds: 0,
+      enabled: true,
+    });
+    renderWatchProfiles();
+    syncWatchForm();
   });
-});
 
-$('#autoNew').addEventListener('click', () => openRuleForm(null));
-$('#autoClear').addEventListener('click', (e) => busy(e.target, async () => { await api('DELETE', '/api/automations/jobs'); await loadAuto(); }));
-$('#refreshAuto').addEventListener('click', (e) => busy(e.target, loadAuto));
-$('#openAuto').addEventListener('click', (e) => busy(e.target, async () => {
-  await loadAuto();
-  if (!ghRepos.length) { api('GET', '/api/repos/github').then((d) => { ghRepos = d.repos || []; fillRepoDatalist(); }).catch(() => {}); }
-  fillRepoDatalist();
-  closeMobileSheet();
-  $('#autoDlg').showModal();
-  renderAutoDialog();
-  clearInterval(autoTimer);
-  autoTimer = setInterval(() => {
-    const active = document.activeElement;
-    if (!$('#autoForm').contains(active) && !$('#watchForm').contains(active) && !$('#watchAddForm').contains(active)) {
-      loadAuto().catch(() => {});
-    }
-  }, 4000);
-}));
-$('#autoClose').addEventListener('click', () => $('#autoDlg').close());
-$('#autoDlg').addEventListener('close', () => { clearInterval(autoTimer); autoTimer = null; });
+  $('#watchCfgToggle').addEventListener('click', () => {
+    const f = $('#watchForm');
+    if (f.classList.contains('hidden')) openWatchForm();
+    else f.classList.add('hidden');
+  });
+  $('#watchCancel').addEventListener('click', () => $('#watchForm').classList.add('hidden'));
+  $('#watchForm').agent.addEventListener('change', () => { fillModelSelect($('#watchForm').model, $('#watchForm').agent.value, ''); syncWatchForm(); });
+  $('#watchForm').reviewAgent.addEventListener('change', () => { fillModelSelect($('#watchForm').reviewModel, $('#watchForm').reviewAgent.value, ''); syncWatchForm(); });
+  for (const name of ['fixEnabled', 'autoReviewAfterFix', 'autoFixRounds', 'reviewLabelEnabled', 'reviewNewPrs', 'mentionEnabled']) {
+    $('#watchForm')[name].addEventListener('change', syncWatchForm);
+  }
+  for (const name of ['fixLabel', 'reviewLabel']) {
+    $('#watchForm')[name].addEventListener('input', syncWatchForm);
+  }
 
-// Start with the rest of the UI (start() in app.js calls loadAuto if it exists).
-setInterval(() => { if (!$('#app').classList.contains('hidden')) loadAuto().catch(() => {}); }, 15000);
+  $('#watchForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const f = e.target, btn = f.querySelector('button[type=submit]');
+    busy(btn, async () => {
+      const body = {
+        agent: f.agent.value,
+        model: supportsLocalModel(f.agent.value) ? f.model.value : '',
+        reviewAgent: f.reviewAgent.value,
+        reviewModel: f.reviewAgent.value && supportsLocalModel(f.reviewAgent.value) ? f.reviewModel.value : '',
+        fixEnabled: f.fixEnabled.checked,
+        fixLabel: f.fixLabel.value,
+        autoReviewAfterFix: f.autoReviewAfterFix.checked,
+        autoFixRounds: Number(f.autoFixRounds.value) || 0,
+        draft: f.draft.checked,
+        reviewLabelEnabled: f.reviewLabelEnabled.checked,
+        reviewLabel: f.reviewLabel.value,
+        reviewNewPrs: f.reviewNewPrs.checked,
+        rereviewOnPush: f.rereviewOnPush.checked,
+        autoFixCi: f.autoFixCi.checked,
+        mentionEnabled: f.mentionEnabled.checked,
+        keyword: f.keyword.value,
+        allowOutside: f.allowOutside.checked,
+        instructions: f.instructions.value,
+        profiles: draftWatchProfiles.map((p) => ({
+          id: p.id || undefined,
+          label: p.label,
+          action: p.action,
+          agent: p.agent,
+          model: supportsLocalModel(p.agent) ? (p.model || '') : '',
+          autoReview: p.action !== 'review' && p.autoReview !== false,
+          reviewAgent: p.action !== 'review' && p.autoReview !== false ? (p.reviewAgent || '') : '',
+          reviewModel: p.action !== 'review' && p.autoReview !== false && p.reviewAgent && supportsLocalModel(p.reviewAgent) ? (p.reviewModel || '') : '',
+          autoFixRounds: p.action !== 'review' && p.autoReview !== false ? (Number(p.autoFixRounds) || 0) : 0,
+          enabled: p.enabled !== false,
+        })),
+      };
+      const r = await api('POST', '/api/automations/watch', body);
+      f.classList.add('hidden');
+      await loadAuto();
+      if (r.warnings?.length) showDialog('Saved, with warnings', r.warnings.join('\n'));
+    });
+  });
+
+  $('#watchAddForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const f = e.target, btn = f.querySelector('button[type=submit]');
+    busy(btn, async () => {
+      const r = await api('POST', '/api/automations/watched-repos', { repo: f.repo.value });
+      f.repo.value = '';
+      await loadAuto();
+      if (r.warnings?.length) showDialog('Watching, with warnings', r.warnings.join('\n'));
+    });
+  });
+
+  $('#autoForm').preset.addEventListener('change', () => {
+    const f = $('#autoForm'), p = PRESETS[f.preset.value];
+    if (p.label && (!f.label.value || Object.values(PRESETS).some((x) => x.label === f.label.value))) f.label.value = p.label;
+    syncForm();
+  });
+  $('#autoForm').agent.addEventListener('change', () => { fillModelSelect($('#autoForm').model, $('#autoForm').agent.value, ''); syncForm(); });
+  $('#autoForm').reviewAgent.addEventListener('change', () => { fillModelSelect($('#autoForm').reviewModel, $('#autoForm').reviewAgent.value, ''); syncForm(); });
+  $('#autoForm').autoReview.addEventListener('change', syncForm);
+  $('#autoCancel').addEventListener('click', () => { $('#autoForm').classList.add('hidden'); editingRule = null; });
+  $('#autoForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const f = e.target, btn = f.querySelector('button[type=submit]');
+    busy(btn, async () => {
+      const p = PRESETS[f.preset.value];
+      const body = {
+        ...(editingRule ? { id: editingRule.id, enabled: editingRule.enabled } : {}),
+        trigger: p.trigger, action: p.action, repo: f.repo.value, label: f.label.value, keyword: f.keyword.value,
+        everyHours: Number(f.everyHours.value), cron: f.cron.value.trim(), agent: f.agent.value, model: supportsLocalModel(f.agent.value) ? f.model.value : '',
+        autoReview: f.autoReview.checked,
+        reviewAgent: f.autoReview.checked ? f.reviewAgent.value : '',
+        reviewModel: f.autoReview.checked && f.reviewAgent.value && supportsLocalModel(f.reviewAgent.value) ? f.reviewModel.value : '',
+        autoFixRounds: f.autoReview.checked ? (Number(f.autoFixRounds.value) || 0) : 0,
+        instructions: f.instructions.value, draft: f.draft.checked, rereview: f.rereview.checked, allowOutside: f.allowOutside.checked,
+        name: f.name.value,
+      };
+      const r = await api('POST', '/api/automations/rules', body);
+      f.classList.add('hidden'); editingRule = null;
+      await loadAuto();
+      if (r.warnings?.length) showDialog('Saved, with warnings', r.warnings.join('\n'));
+    });
+  });
+
+  $('#autoSettings').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const f = e.target;
+    busy(f.querySelector('button'), async () => {
+      await api('POST', '/api/automations/settings', { pollSeconds: Number(f.pollSeconds.value), maxConcurrent: Number(f.maxConcurrent.value), timeoutMinutes: Number(f.timeoutMinutes.value), loopLimit: Number(f.loopLimit.value), paused: f.paused.checked });
+      f.querySelector('button').blur();
+      await loadAuto();
+    });
+  });
+
+  $('#autoNew').addEventListener('click', () => openRuleForm(null));
+  $('#autoClear').addEventListener('click', (e) => busy(e.target, async () => { await api('DELETE', '/api/automations/jobs'); await loadAuto(); }));
+  $('#refreshAuto').addEventListener('click', (e) => busy(e.target, loadAuto));
+  $('#openAuto').addEventListener('click', (e) => busy(e.target, async () => {
+    await loadAuto();
+    if (!state.ghRepos.length) { api('GET', '/api/repos/github').then((d) => { state.ghRepos = d.repos || []; fillRepoDatalist(); }).catch(() => {}); }
+    fillRepoDatalist();
+    closeMobileSheet();
+    $('#autoDlg').showModal();
+    renderAutoDialog();
+    clearInterval(autoTimer);
+    autoTimer = setInterval(() => {
+      const active = document.activeElement;
+      if (!$('#autoForm').contains(active) && !$('#watchForm').contains(active) && !$('#watchAddForm').contains(active)) {
+        loadAuto().catch(() => {});
+      }
+    }, 4000);
+  }));
+  $('#autoClose').addEventListener('click', () => $('#autoDlg').close());
+  $('#autoDlg').addEventListener('close', () => { clearInterval(autoTimer); autoTimer = null; });
+
+  // Start with the rest of the UI (start() in app.js calls loadAuto if it exists).
+  setInterval(() => { if (!$('#app').classList.contains('hidden')) loadAuto().catch(() => {}); }, 15000);
+}
+
+export { autoState, ago, appliedModels, watchedRepoSet, toggleWatchRepo, loadAuto, init };

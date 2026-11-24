@@ -16,13 +16,9 @@ module.exports = [
     },
   },
   {
-    // Frontend: classic <script> files that share one global scope (app.js defines helpers the others use).
+    // Frontend: native ES modules (public/js/main.js is the entry). Every cross-file name is an explicit import, so
+    // no-undef catches typos across files. xterm.js and its addons are classic scripts loaded first (globals).
     files: ['public/**/*.js'],
-    languageOptions: { sourceType: 'script', globals: { ...globals.browser, Terminal: 'readonly', FitAddon: 'readonly', WebLinksAddon: 'readonly', status: 'off' } }, // app.js declares its own `status`
-    rules: {
-      'no-undef': 'off',          // cross-file globals; `node --check` + the browser catch real typos
-      'no-unused-vars': 'off',    // top-level functions are used from other files
-      'no-redeclare': 'off',
-    },
+    languageOptions: { sourceType: 'module', globals: { ...globals.browser, Terminal: 'readonly', FitAddon: 'readonly', WebLinksAddon: 'readonly' } },
   },
 ];
