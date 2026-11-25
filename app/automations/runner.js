@@ -55,7 +55,7 @@ async function prepareCheckout(job, local) {
   // Worktree: one per job, so jobs never collide with each other or with your own checkouts.
   const short = job.id.slice(0, 4);
   fs.mkdirSync(path.join(store.ctx.WT_ROOT, local), { recursive: true });
-  let wt, branch = '', startSha = '';
+  let wt, branch = '', startSha;
   if (pr) {
     const ref = `refs/remotes/agent-hub/pr-${job.number}`;
     await must(git(ldir, ['fetch', 'origin', `+refs/pull/${job.number}/head:${ref}`], 10 * 60 * 1000), 'fetch PR');
