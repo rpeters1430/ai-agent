@@ -38,7 +38,7 @@ function readJson(file, fallback) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); }
   catch (e) {
     if (e.code === 'ENOENT') return fallback;
-    throw new Error(`${file} is not plain JSON (${e.message}); fix or remove it first`);
+    throw new Error(`${file} is not plain JSON (${e.message}); fix or remove it first`, { cause: e });
   }
 }
 function writeJson(file, data, mode) {
@@ -66,13 +66,13 @@ async function ollamaFetch(p, opts = {}, base = ollamaUrl()) {
     if (!r.ok) throw new Error(`Ollama ${p} → HTTP ${r.status} ${(await r.text()).slice(0, 200)}`);
     return r;
   } catch (e) {
-    if (e.name === 'AbortError') throw new Error(`Timed out reaching ${base}`);
+    if (e.name === 'AbortError') throw new Error(`Timed out reaching ${base}`, { cause: e });
     const code = e.cause?.code || e.cause?.errors?.[0]?.code;
     if (code || e.message === 'fetch failed') {
       const hint = code === 'ECONNREFUSED' ? ' — is Ollama running with OLLAMA_HOST=0.0.0.0 on that PC?'
         : code === 'ENOTFOUND' || code === 'EAI_AGAIN' ? ' — hostname not found; try the IP address'
         : code === 'EHOSTUNREACH' || code === 'ENETUNREACH' ? ' — no route to that address from the NAS' : '';
-      throw new Error(`Cannot reach ${base} (${code || e.cause?.message || 'network error'})${hint}`);
+      throw new Error(`Cannot reach ${base} (${code || e.cause?.message || 'network error'})${hint}`, { cause: e });
     }
     throw e;
   } finally { clearTimeout(t); }
@@ -104,7 +104,7 @@ async function describeModel(name) {
 async function listModels() {
   const tags = await (await ollamaFetch('/api/tags')).json();
   const models = await Promise.all((tags.models || []).map(async (m) => {
-    let d = {};
+    let d;
     try { d = await describeModel(m.name); } catch (e) { d = { error: e.message }; }
     const out = { name: m.name, size: m.size, modified: m.modified_at, ...d };
     out.cloud = /cloud/.test(m.name) || m.remote_host != null;
@@ -378,7 +378,7 @@ async function fetchCached(url, ttl = 30 * 60 * 1000) {
     return body;
   } catch (e) {
     if (hit) return hit.body; // stale is better than nothing
-    throw new Error(e.name === 'AbortError' ? 'ollama.com timed out' : `Could not load ollama.com (${e.message})`);
+    throw new Error(e.name === 'AbortError' ? 'ollama.com timed out' : `Could not load ollama.com (${e.message})`, { cause: e });
   } finally { clearTimeout(t); }
 }
 const unescape = (s) => s.replace(/<[^>]+>/g, '').replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/\s+/g, ' ').trim();

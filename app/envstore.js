@@ -34,7 +34,7 @@ function readJson(file, fallback) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); }
   catch (e) {
     if (e.code === 'ENOENT') return fallback;
-    throw new Error(`${file} is not valid JSON (${e.message})`);
+    throw new Error(`${file} is not valid JSON (${e.message})`, { cause: e });
   }
 }
 

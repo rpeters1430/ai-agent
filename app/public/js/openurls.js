@@ -10,7 +10,7 @@ async function pollOpenUrls() {
     openSince = Math.max(openSince, u.ts);
     if (shownUrls.has(u.url)) continue;
     shownUrls.add(u.url);
-    let host = ''; try { host = new URL(u.url).host; } catch { continue; }
+    let host; try { host = new URL(u.url).host; } catch { continue; }
     const toast = h('div', { class: 'toast' },
       h('div', {}, h('b', {}, 'A CLI wants to open a page'), h('div', { class: 'meta' }, host)),
       h('div', { class: 'row' },

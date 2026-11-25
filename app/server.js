@@ -543,7 +543,7 @@ app.use('/preview/:port', (req, res) => {
 // URLs that CLIs tried to open via xdg-open/$BROWSER (see /usr/local/bin/hub-open)
 const OPEN_LOGS = [path.join(HUB_DIR, 'open.log'), '/tmp/agent-hub/open.log'];
 function readOpenLog(file) {
-  let lines = [];
+  let lines;
   try { lines = fs.readFileSync(file, 'utf8').split('\n').filter(Boolean); } catch { return []; }
   if (lines.length > 200) {
     try { fs.writeFileSync(file, lines.slice(-50).join('\n') + '\n', { mode: 0o600 }); } catch {}
