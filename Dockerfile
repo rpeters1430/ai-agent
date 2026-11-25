@@ -1,6 +1,6 @@
 # AI coding agents workstation: Claude Code, Codex, OpenCode, Pi, Antigravity (agy),
 # Gemini CLI, Qwen Code, DeepSeek Harness (dsh) + GitHub CLI + browser terminal UI.
-FROM node:22-bookworm
+FROM node:22-bookworm@sha256:7c400d78797d8cbe3f6bb21d2227b86af4cd24b0014cc9f62ff989cc16de988e
 
 ARG PUID=1000
 ARG PGID=10

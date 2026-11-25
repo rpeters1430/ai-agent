@@ -1,6 +1,6 @@
 services:
   agent-hub:
-    image: ${AGENT_HUB_IMAGE:-ghcr.io/rpeters1430/ai-agent:latest}
+    image: ${AGENT_HUB_IMAGE:-ghcr.io/rpeters1430/ai-agent:latest@sha256:63d2ded8876f35a6abe0e8ac82f6962e5bcec7012b2cb4bc86022710e5133f82}
     container_name: agent-hub
     hostname: agent-hub
     shm_size: "1gb"
