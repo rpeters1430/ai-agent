@@ -1,6 +1,5 @@
 'use strict';
 // Single source of truth for installed coding agents, login helpers, headless automation commands, and updatable CLIs.
-const fs = require('fs');
 const path = require('path');
 const ollama = require('./ollama');
 
