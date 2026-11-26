@@ -43,7 +43,7 @@ echo "ok   UI + vendored xterm"
 STATUS="$(curl -fsS -b "$JAR" "$HUB/api/status")"
 missing="$(printf '%s' "$STATUS" | node -e '
   const s = JSON.parse(require("fs").readFileSync(0, "utf8"));
-  const want = ["claude", "codex", "opencode", "pi", "gemini", "qwen", "dsh", "shell"];
+  const want = ["claude", "codex", "opencode", "pi", "gemini", "qwen", "cline", "shell"];
   process.stdout.write(want.filter((k) => !s.agents?.[k]?.installed).join(" "));
 ' 2>/dev/null || echo "unparseable")"
 [ -z "$missing" ] || fail "CLIs not installed: $missing"

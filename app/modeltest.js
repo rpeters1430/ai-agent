@@ -1,7 +1,7 @@
 'use strict';
 // "Ollama × CLI Compatibility Lab" test runner:
-// Runs a real tool-calling task across every Ollama-capable CLI (Pi, OpenCode, Claude Code, Codex,
-// Qwen Code, DeepSeek Harness) in an isolated throwaway repo, verifying tool calls, edits/reads,
+// Runs a real tool-calling task across every local/custom-model-capable CLI (Pi, OpenCode, Claude Code, Codex,
+// Qwen Code, Cline) in an isolated throwaway repo, verifying tool calls, edits/reads,
 // clean completion, and loop-guard protection.
 const fs = require('fs');
 const os = require('os');
@@ -121,71 +121,101 @@ function verdict(sum, chk, timedOut, mode = 'coding') {
   return { verdict: 'no_edit', text: `Used tools but never made the edit (${t}).` };
 }
 
-function buildCliCommand(agent, model, base, mInfo, tmp, repo, task) {
+function buildCliCommand(agent, model, baseOrEp, mInfo, tmp, repo, task) {
+  const ep = typeof baseOrEp === 'string'
+    ? { providerId: ollama.PROVIDER_ID, name: 'Ollama', baseUrl: `${baseOrEp}/v1`, ollamaBase: baseOrEp, apiKey: 'ollama', modelId: model, isCustom: false }
+    : baseOrEp;
   const env = { ...process.env, PWD: repo }; // OpenCode takes the project from $PWD, not the real cwd
   if (agent === 'opencode') {
     // Merged over user config, so the model doesn't need to be applied first.
     const f = path.join(tmp, 'opencode.json');
-    fs.writeFileSync(f, JSON.stringify({ $schema: 'https://opencode.ai/config.json', provider: { [ollama.PROVIDER_ID]: ollama.opencodeProvider(base, [mInfo]) } }));
+    const provObj = ep.isCustom
+      ? {
+          npm: '@ai-sdk/openai-compatible',
+          name: ep.name,
+          options: { baseURL: ep.baseUrl, ...(ep.apiKey ? { apiKey: ep.apiKey } : {}) },
+          models: { [ep.modelId]: { name: ep.modelId, tool_call: true, limit: { context: ep.contextWindow || 32768, output: 8192 } } },
+        }
+      : ollama.opencodeProvider(ep.ollamaBase, [mInfo]);
+    fs.writeFileSync(f, JSON.stringify({ $schema: 'https://opencode.ai/config.json', provider: { [ep.providerId]: provObj } }));
     env.OPENCODE_CONFIG = f;
-    return { env, cmd: ['opencode', 'run', '--auto', '--format', 'json', '-m', `${ollama.PROVIDER_ID}/${model}`, task] };
+    return { env, cmd: ['opencode', 'run', '--auto', '--format', 'json', '-m', `${ep.providerId}/${ep.modelId}`, task] };
   }
   if (agent === 'pi') {
     const d = path.join(tmp, 'pi');
-    fs.mkdirSync(d);
-    fs.writeFileSync(path.join(d, 'models.json'), JSON.stringify({ providers: { [ollama.PROVIDER_ID]: ollama.piProvider(base, [mInfo]) } }));
-    fs.writeFileSync(path.join(d, 'settings.json'), JSON.stringify({ defaultProvider: ollama.PROVIDER_ID, defaultModel: model }));
+    fs.mkdirSync(d, { recursive: true });
+    const provObj = ep.isCustom
+      ? { baseUrl: ep.baseUrl, api: 'openai-completions', apiKey: ep.apiKey, models: [{ id: ep.modelId, name: ep.modelId, input: ['text'], contextWindow: ep.contextWindow || 32768, maxTokens: 8192 }] }
+      : ollama.piProvider(ep.ollamaBase, [mInfo]);
+    fs.writeFileSync(path.join(d, 'models.json'), JSON.stringify({ providers: { [ep.providerId]: provObj } }));
+    fs.writeFileSync(path.join(d, 'settings.json'), JSON.stringify({ defaultProvider: ep.providerId, defaultModel: ep.modelId }));
     env.PI_CODING_AGENT_DIR = d;
-    return { env, cmd: ['pi', '--provider', ollama.PROVIDER_ID, '--model', model, '--mode', 'json', '-p', task] };
+    return { env, cmd: ['pi', '--provider', ep.providerId, '--model', ep.modelId, '--mode', 'json', '-p', task] };
   }
   if (agent === 'claude') {
-    env.ANTHROPIC_BASE_URL = base;
-    env.ANTHROPIC_AUTH_TOKEN = 'ollama';
-    env.ANTHROPIC_API_KEY = 'ollama';
-    return { env, cmd: ['claude', '--bare', '--dangerously-skip-permissions', '--model', model, '--output-format', 'stream-json', '--verbose', '-p', task] };
+    env.ANTHROPIC_BASE_URL = ep.ollamaBase || ep.baseUrl.replace(/\/v1\/?$/, '');
+    env.ANTHROPIC_AUTH_TOKEN = ep.apiKey;
+    env.ANTHROPIC_API_KEY = ep.apiKey;
+    return { env, cmd: ['claude', '--bare', '--dangerously-skip-permissions', '--model', ep.modelId, '--output-format', 'stream-json', '--verbose', '-p', task] };
   }
   if (agent === 'codex') {
     const d = path.join(tmp, 'codex_home');
-    fs.mkdirSync(d);
+    fs.mkdirSync(d, { recursive: true });
+    const provId = ep.isCustom ? `hub-${ep.providerId}` : ollama.CODEX_PROVIDER_ID;
+    if (ep.isCustom) env.AGENT_HUB_PROVIDER_KEY = ep.apiKey;
     const toml = [
-      `model_provider = "${ollama.CODEX_PROVIDER_ID}"`,
-      `model = ${JSON.stringify(model)}`,
+      `model_provider = "${provId}"`,
+      `model = ${JSON.stringify(ep.modelId)}`,
       '',
-      ollama.buildCodexProviderToml(base),
+      ollama.buildCodexProviderToml(ep.ollamaBase || '', {
+        id: provId,
+        name: ep.name,
+        baseUrl: ep.baseUrl,
+        ...(ep.isCustom ? { envKey: 'AGENT_HUB_PROVIDER_KEY' } : {}),
+      }),
       '',
     ].join('\n');
     fs.writeFileSync(path.join(d, 'config.toml'), toml);
     env.CODEX_HOME = d;
-    return { env, cmd: ['codex', 'exec', '-C', repo, '--dangerously-bypass-approvals-and-sandbox', '--skip-git-repo-check', '--json', '-m', model, task] };
+    return { env, cmd: ['codex', 'exec', '-C', repo, '--dangerously-bypass-approvals-and-sandbox', '--skip-git-repo-check', '--json', '-m', ep.modelId, task] };
   }
   if (agent === 'qwen') {
     env.QWEN_CODE_SUPPRESS_YOLO_WARNING = '1';
     return {
       env,
-      cmd: ['qwen', '-y', '--bare', '--auth-type', 'openai', '--openai-base-url', `${base}/v1`, '--openai-api-key', 'ollama', '-m', model, '--output-format', 'stream-json', '--max-tool-calls', String(MAX_TOOLS), task],
+      cmd: ['qwen', '-y', '--bare', '--auth-type', 'openai', '--openai-base-url', ep.baseUrl, '--openai-api-key', ep.apiKey, '-m', ep.modelId, '--output-format', 'stream-json', '--max-tool-calls', String(MAX_TOOLS), task],
     };
   }
-  if (agent === 'dsh') {
-    const patch = path.join(tmp, 'dsh-ollama.yml');
-    fs.writeFileSync(patch, ollama.buildDshPatchYaml(base, [mInfo], model, { disableTitleLlm: true }));
-    delete env.DEEPSEEK_BASE_URL;
-    delete env.DEEPSEEK_API_KEY;
-    env.OLLAMA_API_KEY = 'ollama';
-    return { env, cmd: ['dsh', '--profile', 'headless', '--patch', patch, '--json', '--approval-policy', 'never', task] };
+  if (agent === 'cline') {
+    const d = path.join(tmp, 'cline');
+    const settingsDir = path.join(d, 'data', 'settings');
+    fs.mkdirSync(settingsDir, { recursive: true });
+    fs.writeFileSync(path.join(settingsDir, 'providers.json'), JSON.stringify({
+      providers: {
+        'openai-compatible': {
+          settings: { provider: 'openai-compatible', baseUrl: ep.baseUrl, apiKey: ep.apiKey },
+          tokenSource: 'manual',
+        },
+      },
+    }, null, 2));
+    env.CLINE_DIR = d;
+    return { env, cmd: ['cline', '-y', '--json', '-m', ep.modelId, task] };
   }
-  throw new Error(`Unsupported CLI for Ollama test: ${agent}`);
+  throw new Error(`Unsupported CLI for local/custom model test: ${agent}`);
 }
 
 async function runOne(model, agent, mode = 'coding') {
-  const base = ollama.ollamaUrl();
-  if (!base) throw new Error('No Ollama URL configured');
-  const mInfo = { name: model, ...(await ollama.describeModel(model)) };
+  const ep = ollama.resolveModelEndpoint(model);
+  if (!ep) throw new Error('No Ollama URL or matching custom provider configured');
+  const mInfo = ep.isCustom
+    ? { name: ep.modelId }
+    : { name: ep.modelId, ...(await ollama.describeModel(ep.modelId)) };
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-hub-test-'));
   const repo = path.join(tmp, 'repo');
   fs.mkdirSync(repo);
   makeRepo(repo);
   const task = mode === 'tool_smoke' ? SMOKE_TASK : CODING_TASK;
-  const { env, cmd } = buildCliCommand(agent, model, base, mInfo, tmp, repo, task);
+  const { env, cmd } = buildCliCommand(agent, model, ep, mInfo, tmp, repo, task);
   const sumFile = path.join(tmp, 'summary.json');
   const started = Date.now();
   let timedOut = false, stderr = '';

@@ -16,9 +16,10 @@ const AGENTS = {
     yolo: 'claude --dangerously-skip-permissions',
     pkg: '@anthropic-ai/claude-code',
     headless: (m, g) => {
-      const base = m ? ollama.ollamaUrl() : '';
-      const envPrefix = m && base ? `env ANTHROPIC_BASE_URL=${shQ(base)} ANTHROPIC_AUTH_TOKEN='ollama' ANTHROPIC_API_KEY='ollama' ` : '';
-      const modelFlag = m ? ` --model ${shQ(m)}` : '';
+      const ep = m ? ollama.resolveModelEndpoint(m) : null;
+      const anthropicBase = ep ? (ep.ollamaBase || ep.baseUrl.replace(/\/v1\/?$/, '')) : '';
+      const envPrefix = ep ? `env ANTHROPIC_BASE_URL=${shQ(anthropicBase)} ANTHROPIC_AUTH_TOKEN=${shQ(ep.apiKey)} ANTHROPIC_API_KEY=${shQ(ep.apiKey)} ` : '';
+      const modelFlag = m ? ` --model ${shQ(ep ? ep.modelId : m)}` : '';
       return guarded('claude', g, `${envPrefix}claude --dangerously-skip-permissions${modelFlag}${g ? ' --output-format stream-json --verbose' : ''} -p "$P"`);
     },
   },
@@ -29,11 +30,18 @@ const AGENTS = {
     yolo: 'codex --dangerously-bypass-approvals-and-sandbox',
     pkg: '@openai/codex',
     headless: (m, g) => {
-      const base = m ? ollama.ollamaUrl() : '';
-      const provCfg = m && base
-        ? ` -c ${shQ(`model_provider="${ollama.CODEX_PROVIDER_ID}"`)} -c ${shQ(`model_providers.${ollama.CODEX_PROVIDER_ID}={name="Ollama",base_url="${base}/v1",wire_api="responses"}`)} -m ${shQ(m)}`
-        : (m ? ` -m ${shQ(m)}` : '');
-      return guarded('codex', g, `codex exec --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check${provCfg}${g ? ' --json' : ''} "$P"`);
+      const ep = m ? ollama.resolveModelEndpoint(m) : null;
+      let envPrefix = '';
+      let provCfg = m ? ` -m ${shQ(m)}` : '';
+      if (ep) {
+        const provId = ep.isCustom ? `hub-${ep.providerId}` : ollama.CODEX_PROVIDER_ID;
+        if (ep.isCustom) envPrefix = `AGENT_HUB_PROVIDER_KEY=${shQ(ep.apiKey)} `;
+        const cfgVal = ep.isCustom
+          ? `model_providers.${provId}={name=${JSON.stringify(ep.name)},base_url=${JSON.stringify(ep.baseUrl)},wire_api="responses",env_key="AGENT_HUB_PROVIDER_KEY"}`
+          : `model_providers.${provId}={name="Ollama",base_url=${JSON.stringify(ep.baseUrl)},wire_api="responses"}`;
+        provCfg = ` -c ${shQ(`model_provider="${provId}"`)} -c ${shQ(cfgVal)} -m ${shQ(ep.modelId)}`;
+      }
+      return guarded('codex', g, `${envPrefix}codex exec --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check${provCfg}${g ? ' --json' : ''} "$P"`);
     },
   },
   opencode: {
@@ -41,7 +49,7 @@ const AGENTS = {
     bin: 'opencode',
     cmd: 'opencode',
     pkg: 'opencode-ai',
-    headless: (m, g) => guarded('opencode', g, `opencode run --auto${g ? ' --format json' : ''}${m ? ` -m '${m.includes('/') ? m : `ollama/${m}`}'` : ''} "$P"`),
+    headless: (m, g) => guarded('opencode', g, `opencode run --auto${g ? ' --format json' : ''}${m ? ` -m ${shQ(m.includes('/') ? m : `ollama/${m}`)}` : ''} "$P"`),
   },
   pi: {
     label: 'Pi',
@@ -53,7 +61,7 @@ const AGENTS = {
       if (m) {
         const i = m.indexOf('/');
         const hasProv = i > 0 && !m.startsWith('hf.co/') && /^[a-z0-9_-]+$/.test(m.slice(0, i));
-        modelFlag = hasProv ? ` --provider '${m.slice(0, i)}' --model '${m.slice(i + 1)}'` : ` --provider ollama --model '${m}'`;
+        modelFlag = hasProv ? ` --provider ${shQ(m.slice(0, i))} --model ${shQ(m.slice(i + 1))}` : ` --provider ollama --model ${shQ(m)}`;
       }
       return guarded('pi', g, `pi${modelFlag}${g ? ' --mode json' : ''} -p "$P"`);
     },
@@ -81,25 +89,27 @@ const AGENTS = {
     yolo: 'qwen -y',
     pkg: '@qwen-code/qwen-code',
     headless: (m, g) => {
-      const base = m ? ollama.ollamaUrl() : '';
-      const ollamaFlags = m && base ? ` --auth-type openai --openai-base-url ${shQ(`${base}/v1`)} --openai-api-key 'ollama' -m ${shQ(m)}` : (m ? ` -m ${shQ(m)}` : '');
+      const ep = m ? ollama.resolveModelEndpoint(m) : null;
+      const ollamaFlags = ep
+        ? ` --auth-type openai --openai-base-url ${shQ(ep.baseUrl)} --openai-api-key ${shQ(ep.apiKey)} -m ${shQ(ep.modelId)}`
+        : (m ? ` -m ${shQ(m)}` : '');
       return guarded('qwen', g, `qwen -y${ollamaFlags}${g ? ' --output-format stream-json' : ''} -p "$P"`);
     },
   },
-  dsh: {
-    label: 'DeepSeek Harness',
-    bin: 'dsh',
-    cmd: 'env -u DEEPSEEK_BASE_URL dsh web --no-open',
-    pkg: '@deepseek-ai/dsh',
+  cline: {
+    label: 'Cline',
+    bin: 'cline',
+    cmd: 'cline',
+    yolo: 'cline -y',
+    pkg: 'cline',
     headless: (m, g) => {
-      const base = m ? ollama.ollamaUrl() : '';
-      if (m && base) {
-        // The run script writes the patch into its own job folder ($JOBDIR), so it's removed with the job.
-        const yaml = ollama.buildDshPatchYaml(base, [{ name: m }], m, { disableTitleLlm: true });
-        const write = `DSH_PATCH="\${JOBDIR:-$(mktemp -d)}/dsh-ollama.yml"; (umask 077; printf '%s' ${shQ(yaml)} > "$DSH_PATCH")`;
-        return `${write} && ${guarded('dsh', g, `env -u DEEPSEEK_BASE_URL -u DEEPSEEK_API_KEY OLLAMA_API_KEY='ollama' dsh --profile headless --patch "$DSH_PATCH"${g ? ' --json' : ''} --approval-policy never "$P"`)}`;
+      const ep = m ? ollama.resolveModelEndpoint(m) : null;
+      if (ep) {
+        const setup = `CLINE_DIR="\${JOBDIR:-$(mktemp -d)}/cline"; export CLINE_DIR; cline auth -p openai -b ${shQ(ep.baseUrl)} -k ${shQ(ep.apiKey)} -m ${shQ(ep.modelId)} >/dev/null 2>&1`;
+        return `${setup} && ${guarded('cline', g, `cline -y${g ? ' --json' : ''} -m ${shQ(ep.modelId)} "$P"`)}`;
       }
-      return guarded('dsh', g, `env -u DEEPSEEK_BASE_URL dsh --profile headless${g ? ' --json' : ''} --approval-policy never "$P"`);
+      const modelFlag = m ? ` -m ${shQ(m)}` : '';
+      return guarded('cline', g, `cline -y${g ? ' --json' : ''}${modelFlag} "$P"`);
     },
   },
   shell: {
@@ -124,7 +134,7 @@ const LOGINS = {
   agy:      { label: 'Antigravity login', cmd: 'agy' },
   gemini:   { label: 'Gemini login',      cmd: 'echo "Gemini CLI signs in with Google OAuth on first run (or set GEMINI_API_KEY in System → API Keys)."; gemini' },
   qwen:     { label: 'Qwen Code login',   cmd: 'echo "Qwen Code signs in with Qwen OAuth or an OpenAI-compatible API key on first run."; qwen' },
-  dsh:      { label: 'DeepSeek login',    cmd: 'echo "DeepSeek Harness uses DEEPSEEK_API_KEY (and optional DEEPSEEK_BASE_URL). Set them in System → API Keys or .env."; dsh --version || true; exec bash -l' },
+  cline:    { label: 'Cline login',       cmd: 'cline auth' },
 };
 
 const HEADLESS_AGENTS = Object.fromEntries(
@@ -140,12 +150,4 @@ const UPDATABLE_TOOLS = [
   ...EXTRA_TOOLS,
 ];
 
-// Older versions wrote one ~/.agent-hub/dsh-auto-*.yml per DeepSeek Harness run and never removed them.
-function cleanupLegacyDshPatches() {
-  const dir = path.dirname(ollama.DSH_PATCH_FILE);
-  try {
-    for (const f of fs.readdirSync(dir)) if (/^dsh-auto-.*\.yml$/.test(f)) fs.rmSync(path.join(dir, f), { force: true });
-  } catch {}
-}
-
-module.exports = { AGENTS, LOGINS, HEADLESS_AGENTS, UPDATABLE_TOOLS, EXTRA_TOOLS, cleanupLegacyDshPatches };
+module.exports = { AGENTS, LOGINS, HEADLESS_AGENTS, UPDATABLE_TOOLS, EXTRA_TOOLS };

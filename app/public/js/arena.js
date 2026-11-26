@@ -8,7 +8,7 @@ let arenaRepo = '';
 function fillArenaModels(sel, agentKey) {
   const models = typeof appliedModels === 'function' ? appliedModels(agentKey) : [];
   sel.replaceChildren(h('option', { value: '' }, 'agent default'), ...models.map((m) => h('option', { value: m }, m)));
-  sel.disabled = !['pi', 'opencode', 'claude', 'codex', 'qwen', 'dsh'].includes(agentKey);
+  sel.disabled = !['pi', 'opencode', 'claude', 'codex', 'qwen', 'cline'].includes(agentKey);
 }
 
 function openArena(repoObj) {

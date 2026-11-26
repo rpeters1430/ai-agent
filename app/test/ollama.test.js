@@ -3,7 +3,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   MODEL_RE, parseNumCtx, parseCtx, parseSearch, parseTags, usage, opencodeProvider, piProvider,
-  OLLAMA_CLI_KEYS, CODEX_PROVIDER_ID, buildCodexProviderToml, buildDshPatchYaml,
+  OLLAMA_CLI_KEYS, CODEX_PROVIDER_ID, buildCodexProviderToml, buildInteractiveCmd,
 } = require('../ollama');
 
 test('MODEL_RE accepts valid tags and rejects shell metacharacters', () => {
@@ -92,18 +92,22 @@ test('opencodeProvider and piProvider build valid provider schemas', () => {
   assert.deepEqual(pi.models[0].input, ['text']);
 });
 
-test('multi-CLI Ollama builders generate valid Codex TOML and DSH YAML configs', () => {
-  assert.deepEqual(OLLAMA_CLI_KEYS, ['pi', 'opencode', 'claude', 'codex', 'qwen', 'dsh']);
+test('multi-CLI Ollama builders generate valid Codex TOML and Cline interactive commands', () => {
+  assert.deepEqual(OLLAMA_CLI_KEYS, ['pi', 'opencode', 'claude', 'codex', 'qwen', 'cline']);
   const toml = buildCodexProviderToml('http://10.0.0.5:11434');
   assert.match(toml, new RegExp(`\\[model_providers\\.${CODEX_PROVIDER_ID}\\]`));
   assert.match(toml, /base_url = "http:\/\/10\.0\.0\.5:11434\/v1"/);
   assert.match(toml, /wire_api = "responses"/);
 
-  const yaml = buildDshPatchYaml('http://10.0.0.5:11434', [{ name: 'qwen3:8b', params: '8B', numCtx: 32768 }], 'qwen3:8b', { disableTitleLlm: true });
-  assert.match(yaml, /id: llm-pi-ai/);
-  assert.match(yaml, /api: openai-completions/);
-  assert.match(yaml, /baseURL: "http:\/\/10\.0\.0\.5:11434\/v1"/);
-  assert.match(yaml, /id: "qwen3:8b"/);
-  assert.match(yaml, /id: session-title-llm/);
-  assert.match(yaml, /disabled: true/);
+  const orig = process.env.OLLAMA_URL;
+  process.env.OLLAMA_URL = 'http://10.0.0.5:11434';
+  try {
+    const cmd = buildInteractiveCmd('cline', 'qwen3:8b', { yolo: true });
+    assert.match(cmd, /cline auth -p openai/);
+    assert.match(cmd, /http:\/\/10\.0\.0\.5:11434\/v1/);
+    assert.match(cmd, /cline -y -m 'qwen3:8b'/);
+  } finally {
+    if (orig === undefined) delete process.env.OLLAMA_URL;
+    else process.env.OLLAMA_URL = orig;
+  }
 });

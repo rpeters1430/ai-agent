@@ -1,6 +1,6 @@
 # Agent Hub
 
-A single Docker container with **Claude Code, Codex, OpenCode, Pi, Antigravity (`agy`), Gemini CLI, Qwen Code, and DeepSeek Harness (`dsh`)**,
+A single Docker container with **Claude Code, Codex, OpenCode, Pi, Antigravity (`agy`), Gemini CLI, Qwen Code, and Cline (`cline`)**,
 plus the GitHub CLI, behind a password-protected web UI with real browser terminals.
 
 - Clone any of your GitHub repos into `./workspace` with one click
@@ -41,7 +41,7 @@ Everything is stored in `./data/home` so it survives rebuilds.
 | Antigravity | **Antigravity login** → follow agy's first-run sign-in |
 | Gemini CLI | **Gemini login** → Google OAuth on first run, or set `GEMINI_API_KEY` in **System → API keys** |
 | Qwen Code | **Qwen Code login** → Qwen OAuth on first run, or set `DASHSCOPE_API_KEY` / `OPENAI_API_KEY` |
-| DeepSeek Harness | Set `DEEPSEEK_API_KEY` (and optional `DEEPSEEK_BASE_URL`) in **System → API keys** or `.env`. Starts `dsh web --no-open` (viewable via **Preview** proxy) and uses `dsh --profile headless` for automations |
+| Cline | **Cline login** → `cline auth` (OpenAI, Anthropic, OpenRouter, or custom OpenAI-compatible). Uses `cline -y --json` for automations |
 
 If signing in ends on a `localhost:…/callback?code=…` page that won't load (Claude Code does this), copy that address
 from the browser bar and paste it into **Finish login** under Accounts. The page only exists inside the container, so
@@ -92,14 +92,14 @@ How it works:
   same tool call returns the same result *N* times (default 4, set it in the automation settings, 0 = off). The run fails with the reason,
   and its worktree is kept.
 
-## Local models (Ollama)
+## Local models (Ollama & llama.cpp)
 
-**Pi, OpenCode, Claude Code, Codex, Qwen Code, and DeepSeek Harness (`dsh`)** can all use models from an Ollama server on another PC (Gemini CLI and Antigravity use Google/managed endpoints only).
+**Pi, OpenCode, Claude Code, Codex, Qwen Code, and Cline** can all use models from an Ollama server or an OpenAI-compatible server like `llama.cpp` (`http://192.168.8.143:8080/v1` with an optional API key) on another PC (Gemini CLI and Antigravity use Google/managed endpoints only).
 
 1. On the Ollama PC: set `OLLAMA_HOST=0.0.0.0`, restart Ollama, and open TCP 11434 in its firewall.
-   It's also worth setting `OLLAMA_CONTEXT_LENGTH=32768`, because coding agents need a large context (especially Codex, Qwen Code, OpenCode, and DSH).
-2. In Agent Hub → **Models**: enter `http://<pc-ip>:11434` and click **Connect**.
-3. Open **CLI Compatibility Lab…** to run a **Models × CLIs** verification matrix across Pi, OpenCode, Claude Code, Codex, Qwen Code, and DeepSeek Harness (in either **Full coding edit** mode or **Quick tool smoke** mode). Every test runs under `app/agentstream.js` with loop-guard protection, verifies real tool calls and clean completion, and shows tool-call traces, peak prompt tokens, errors, and diffs. Click **Apply passing** to configure every model on the CLIs it passed on.
+   It's also worth setting `OLLAMA_CONTEXT_LENGTH=32768`, because coding agents need a large context (especially Codex, Qwen Code, OpenCode, and Cline).
+2. In Agent Hub → **Models**: enter `http://<pc-ip>:11434` and click **Connect**, **or** add a `llama.cpp` / LM Studio / vLLM server under **OpenAI-compatible / llama.cpp** with its `/v1` URL and API key.
+3. Open **CLI Compatibility Lab…** to run a **Models × CLIs** verification matrix across Pi, OpenCode, Claude Code, Codex, Qwen Code, and Cline (in either **Full coding edit** mode or **Quick tool smoke** mode). Every test runs under `app/agentstream.js` with loop-guard protection, verifies real tool calls and clean completion, and shows tool-call traces, peak prompt tokens, errors, and diffs. Click **Apply passing** to configure every model on the CLIs it passed on.
 4. Or manually tick models (ideally ones with the **tools** badge and **ctx ≥ 16k**), choose target CLIs, optionally a default, and click **Apply checked models**.
 5. Start any configured CLI from a repo and pick the model in **Local model (Ollama / custom)** (or use it in Automations and Multi-Agent Arena).
 
@@ -109,7 +109,7 @@ it can do in Agent Hub. **Show versions** lists each size with its download size
 
 The panel shows each model's effective context size (and warns when Ollama's live loaded `/api/ps` context is smaller than `serverCtx`). If it's small (yellow), click **Make agent-ready copy** to create `<model>-ctx32k` on the Ollama server with `num_ctx 32768`.
 
-Generated config: `~/.config/opencode/opencode.json` (provider `ollama`), `~/.pi/agent/models.json` (+ `settings.json`), `~/.codex/config.toml` (provider `ollama-hub`), `~/.agent-hub/dsh-ollama.yml`, and per-session env/flag injection for Claude Code (`ANTHROPIC_BASE_URL`) and Qwen Code (`--auth-type openai`) so cloud auth remains untouched when using agent defaults. Test results are persisted in `~/.agent-hub/model-tests.json`.
+Generated config: `~/.config/opencode/opencode.json`, `~/.pi/agent/models.json` (+ `settings.json`), `~/.codex/config.toml` (provider `ollama-hub`), and per-session env/flag injection for Claude Code (`ANTHROPIC_BASE_URL`), Qwen Code (`--auth-type openai`), and Cline (`CLINE_DIR` + `cline auth`) so cloud auth remains untouched when using agent defaults. Test results are persisted in `~/.agent-hub/model-tests.json`.
 
 ## Updating the CLIs
 
@@ -152,7 +152,7 @@ Events:
 
 ## Dev-server previews
 
-The **Preview** button proxies a dev server running inside the container (`npm run dev`, `dsh web`, …). Previews are
+The **Preview** button proxies a dev server running inside the container (`npm run dev`, …). Previews are
 served on a **separate port** (`HUB_PREVIEW_PORT`, default `3871` → container `7682`), so the browser treats them as a
 different site origin. Pages from a dev server, and any third-party scripts they load, can't call the Agent Hub API with
 your session, and Agent Hub's cookies are stripped before a request reaches the dev server.

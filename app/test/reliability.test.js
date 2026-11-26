@@ -49,23 +49,15 @@ test('withLock runs same-key calls one at a time, in order, and survives failure
   assert.ok(events.indexOf('end b') < events.indexOf('end 1'), 'other keys are not blocked');
 });
 
-test('dsh headless command writes its Ollama patch into $JOBDIR at run time, not when built', () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ah-dsh-'));
-  const ollama = require('../ollama');
-  const orig = ollama.ollamaUrl;
+test('cline headless command sets up isolated CLINE_DIR at run time, not when built', () => {
   const { HEADLESS_AGENTS } = require('../agents');
-  const hubDir = path.dirname(ollama.DSH_PATCH_FILE);
-  const before = fs.existsSync(hubDir) ? fs.readdirSync(hubDir).filter((f) => f.startsWith('dsh-auto-')).length : 0;
   process.env.OLLAMA_URL = 'http://10.0.0.5:11434';
   try {
-    const cmd = HEADLESS_AGENTS.dsh.cmd('qwen3:8b', 0);
-    assert.match(cmd, /DSH_PATCH="\$\{JOBDIR:-/);
-    assert.match(cmd, /--patch "\$DSH_PATCH"/);
-    const after = fs.existsSync(hubDir) ? fs.readdirSync(hubDir).filter((f) => f.startsWith('dsh-auto-')).length : 0;
-    assert.equal(after, before, 'building the command must not create files');
+    const cmd = HEADLESS_AGENTS.cline.cmd('qwen3:8b', 0);
+    assert.match(cmd, /CLINE_DIR="\$\{JOBDIR:-/);
+    assert.match(cmd, /cline auth -p openai/);
+    assert.match(cmd, /cline -y -m 'qwen3:8b'/);
   } finally {
     delete process.env.OLLAMA_URL;
-    ollama.ollamaUrl = orig;
-    fs.rmSync(tmp, { recursive: true, force: true });
   }
 });

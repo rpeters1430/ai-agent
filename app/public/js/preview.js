@@ -8,7 +8,7 @@ async function refreshPreviewPorts() {
     const hData = await api('GET', '/api/system/health');
     box.replaceChildren();
     if (!hData.ports?.length) {
-      box.append(h('span', { class: 'small muted' }, 'No dev servers detected yet. Start a server (e.g. npm run dev or dsh web) and click Scan ports, or enter a port below.'));
+      box.append(h('span', { class: 'small muted' }, 'No dev servers detected yet. Start a server (e.g. npm run dev) and click Scan ports, or enter a port below.'));
       return;
     }
     for (const port of hData.ports) {

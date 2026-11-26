@@ -134,12 +134,11 @@ test('qwen tracker parses tool_use, tool_result, usage, and detects loops', () =
   assert.equal(st.loop.times, 2);
 });
 
-test('dsh tracker parses tool_call, tool_result, step_end usage, final text, and detects loops', () => {
-  const { st, onEvent } = createTracker('dsh', 2, () => {});
+test('cline tracker parses tool_call, tool_result, run_result usage/text, and detects loops', () => {
+  const { st, onEvent } = createTracker('cline', 2, () => {});
   onEvent({ type: 'tool_call', callId: 'c1', tool: 'read', input: { file_path: 'src/server.js' } });
   onEvent({ type: 'tool_result', callId: 'c1', status: 'completed', result: 'server.listen(3000)' });
-  onEvent({ type: 'status', phase: 'step_end', usage: { inputTokens: 1700, cacheReadTokens: 4100, outputTokens: 25 } });
-  onEvent({ type: 'final', text: 'src/server.js' });
+  onEvent({ type: 'run_result', usage: { inputTokens: 1700, cacheReadTokens: 4100, outputTokens: 25 }, text: 'src/server.js' });
   assert.equal(st.tools, 1);
   assert.equal(st.maxPromptTokens, 5800);
   assert.equal(st.totalOutputTokens, 25);
@@ -153,7 +152,7 @@ test('dsh tracker parses tool_call, tool_result, step_end usage, final text, and
 });
 
 test('tracker triggers error_loop guard on consecutive errors and maxTools cap', () => {
-  const { st, onEvent } = createTracker('dsh', 3, () => {});
+  const { st, onEvent } = createTracker('cline', 3, () => {});
   for (let i = 0; i < 6; i++) {
     onEvent({ type: 'tool_call', callId: `e${i}`, tool: 'edit', input: { path: `f${i}.js` } });
     onEvent({ type: 'tool_result', callId: `e${i}`, status: 'error', error: `err ${i}` });

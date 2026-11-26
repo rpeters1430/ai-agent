@@ -4,7 +4,7 @@
 // and stops the agent when it loops (the same tool call with the same result over and over,
 // or repeated consecutive tool errors, or exceeding an optional --max-tools cap).
 //
-//   node agentstream.js --agent opencode|pi|claude|codex|gemini|qwen|dsh [--loop 4] [--max-tools 0] [--summary file.json] -- <command...>
+//   node agentstream.js --agent opencode|pi|claude|codex|gemini|qwen|cline [--loop 4] [--max-tools 0] [--summary file.json] -- <command...>
 //
 // Exit code: the agent's own, or 86 when the loop guard stopped it.
 const { spawn } = require('child_process');
@@ -12,7 +12,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 
 const LOOP_EXIT = 86;
-const SUPPORTED_AGENTS = ['opencode', 'pi', 'claude', 'codex', 'gemini', 'qwen', 'dsh'];
+const SUPPORTED_AGENTS = ['opencode', 'pi', 'claude', 'codex', 'gemini', 'qwen', 'cline'];
 
 function parseArgs(argv) {
   const o = { agent: '', loop: 4, maxTools: 0, summary: '', cmd: [] };
@@ -184,22 +184,26 @@ function createTracker(agent, limit, print, opts = {}) {
         const m = e.message || e.error?.message || JSON.stringify(e);
         st.errors.push(m); print(`✗ ${m}`);
       }
-    } else if (agent === 'dsh') {
-      if (e.type === 'tool_call') {
-        pending.set(e.callId || e.id || e.tool, { name: e.tool || 'tool', args: e.input || {} });
+    } else if (agent === 'cline') {
+      if (e.type === 'tool_use' || e.type === 'tool_call') {
+        const name = e.tool_name || e.name || e.tool || 'tool';
+        pending.set(e.tool_id || e.callId || e.id || name, { name, args: e.parameters || e.input || e.args || {} });
       } else if (e.type === 'tool_result') {
-        const id = e.callId || e.id || e.tool;
-        const p = pending.get(id) || { name: e.tool || 'tool', args: {} };
+        const id = e.tool_id || e.callId || e.id || e.tool_name || e.tool;
+        const p = pending.get(id) || { name: e.tool_name || e.tool || 'tool', args: {} };
         pending.delete(id);
-        const isErr = e.status === 'error' || !!e.error;
-        call(p.name, p.args, isErr ? (e.error || e.result) : e.result, isErr);
-      } else if (e.type === 'text' && e.text) {
-        text(e.text);
-      } else if (e.type === 'status' && e.phase === 'step_end' && e.usage) {
-        const u = e.usage;
-        addUsage((u.inputTokens || 0) + (u.cacheReadTokens || 0), u.outputTokens || 0);
-      } else if (e.type === 'final' && e.text && !st.lastText) {
-        text(e.text);
+        const isErr = e.status === 'error' || !!e.error || !!e.is_error;
+        call(p.name, p.args, isErr ? (e.error || e.result || e.output) : (e.result ?? e.output ?? ''), isErr);
+      } else if (e.type === 'say' && e.say === 'tool' && e.text) {
+        try {
+          const t = JSON.parse(e.text);
+          call(t.tool || 'tool', t, t.content || '', false);
+        } catch { text(e.text); }
+      } else if ((e.type === 'say' || e.type === 'text') && (e.text || e.content)) {
+        text(e.text || e.content);
+      } else if (e.type === 'run_result') {
+        if (e.usage) addUsage((e.usage.inputTokens || e.usage.input_tokens || 0) + (e.usage.cacheReadTokens || 0), e.usage.outputTokens || e.usage.output_tokens || 0);
+        if (e.text && !st.lastText) text(e.text);
       } else if (e.type === 'error') {
         const m = e.message || e.error?.message || JSON.stringify(e);
         st.errors.push(m); print(`✗ ${m}`);

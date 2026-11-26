@@ -30,7 +30,7 @@ function defaultAgent() {
   for (const r of store.data.rules || []) {
     if (r.agent && HEADLESS[r.agent] && (!store.ctx || store.ctx.isBinInstalled(HEADLESS[r.agent].bin))) return r.agent;
   }
-  const order = ['claude', 'agy', 'codex', 'gemini', 'qwen', 'dsh', 'opencode', 'pi'];
+  const order = ['claude', 'agy', 'codex', 'gemini', 'qwen', 'cline', 'opencode', 'pi'];
   for (const k of order) {
     if (HEADLESS[k] && (!store.ctx || store.ctx.isBinInstalled(HEADLESS[k].bin))) return k;
   }

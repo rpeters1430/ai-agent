@@ -1,5 +1,5 @@
 # AI coding agents workstation: Claude Code, Codex, OpenCode, Pi, Antigravity (agy),
-# Gemini CLI, Qwen Code, DeepSeek Harness (dsh) + GitHub CLI + browser terminal UI.
+# Gemini CLI, Qwen Code, Cline CLI (cline) + GitHub CLI + browser terminal UI.
 FROM node:26-bookworm@sha256:893ea48106e988a5f91e69629d6472600daa9d0494adf7db87eb0b886ce82255
 
 ARG PUID=1000
@@ -72,24 +72,8 @@ RUN npm install -g \
       @earendil-works/pi-coding-agent \
       @google/gemini-cli \
       @qwen-code/qwen-code \
+      cline \
       agent-browser \
- && npm cache clean --force \
- && rm -rf /home/dev/.npm/_cacache
-
-# DeepSeek Harness (dsh) — often publishes prerelease/tag-only versions (alpha/rc/next),
-# where bare `npm i -g @deepseek-ai/dsh` fails with ETARGET (@*). Resolve dist-tags/versions explicitly.
-RUN set -e; \
-    install_dsh() { \
-      for spec in "@deepseek-ai/dsh@latest" "@deepseek-ai/dsh@next" "@deepseek-ai/dsh@alpha" "@deepseek-ai/dsh@beta"; do \
-        echo "Trying $spec..." && npm install -g "$spec" && return 0 || true; \
-      done; \
-      VERS=$(npm view @deepseek-ai/dsh versions --json 2>/dev/null | node -e "const v=JSON.parse(require('fs').readFileSync(0,'utf8')||'[]'); const a=Array.isArray(v)?v:[v].filter(Boolean); console.log(a.slice(-5).reverse().join('\n'));" || true); \
-      for v in $VERS; do \
-        echo "Trying @deepseek-ai/dsh@$v..." && npm install -g "@deepseek-ai/dsh@$v" && return 0 || true; \
-      done; \
-      return 1; \
-    }; \
-    install_dsh \
  && npm cache clean --force \
  && rm -rf /home/dev/.npm/_cacache
 

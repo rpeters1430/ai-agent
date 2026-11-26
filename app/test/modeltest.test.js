@@ -7,8 +7,8 @@ const path = require('path');
 const { verdict, buildCliCommand, AGENT_KEYS, SMOKE_TOKEN } = require('../modeltest');
 const { LOOP_EXIT } = require('../agentstream');
 
-test('modeltest supports all 6 Ollama-capable CLIs and builds isolated commands', () => {
-  assert.deepEqual(AGENT_KEYS, ['pi', 'opencode', 'claude', 'codex', 'qwen', 'dsh']);
+test('modeltest supports all 6 local/custom-capable CLIs and builds isolated commands', () => {
+  assert.deepEqual(AGENT_KEYS, ['pi', 'opencode', 'claude', 'codex', 'qwen', 'cline']);
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mt-unit-'));
   const repo = path.join(tmp, 'repo');
   fs.mkdirSync(repo);
@@ -40,12 +40,27 @@ test('modeltest supports all 6 Ollama-capable CLIs and builds isolated commands'
     assert.ok(qwen.cmd.includes('--auth-type'));
     assert.ok(qwen.cmd.includes(`${base}/v1`));
 
-    const dsh = buildCliCommand('dsh', 'qwen3:8b', base, mInfo, tmp, repo, 'task');
-    assert.equal(dsh.cmd[0], 'dsh');
-    assert.equal(dsh.env.OLLAMA_API_KEY, 'ollama');
-    assert.equal(dsh.env.DEEPSEEK_BASE_URL, undefined);
-    const patchIdx = dsh.cmd.indexOf('--patch');
-    assert.ok(patchIdx > 0 && fs.existsSync(dsh.cmd[patchIdx + 1]));
+    const cline = buildCliCommand('cline', 'qwen3:8b', base, mInfo, tmp, repo, 'task');
+    assert.equal(cline.cmd[0], 'cline');
+    assert.ok(cline.cmd.includes('--json'));
+    assert.ok(fs.existsSync(path.join(cline.env.CLINE_DIR, 'data', 'settings', 'providers.json')));
+
+    // Custom llama.cpp endpoint with API key
+    const llamaEp = {
+      providerId: 'llamacpp',
+      name: 'llama.cpp',
+      baseUrl: 'http://192.168.8.143:8080/v1',
+      apiKey: 'secret-llama-key',
+      modelId: 'qwen3-coder',
+      contextWindow: 32768,
+      isCustom: true,
+    };
+    const qwenLlama = buildCliCommand('qwen', 'llamacpp/qwen3-coder', llamaEp, { name: 'qwen3-coder' }, tmp, repo, 'task');
+    assert.ok(qwenLlama.cmd.includes('http://192.168.8.143:8080/v1'));
+    assert.ok(qwenLlama.cmd.includes('secret-llama-key'));
+    const codexLlama = buildCliCommand('codex', 'llamacpp/qwen3-coder', llamaEp, { name: 'qwen3-coder' }, tmp, repo, 'task');
+    assert.equal(codexLlama.env.AGENT_HUB_PROVIDER_KEY, 'secret-llama-key');
+    assert.match(fs.readFileSync(path.join(codexLlama.env.CODEX_HOME, 'config.toml'), 'utf8'), /http:\/\/192\.168\.8\.143:8080\/v1/);
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

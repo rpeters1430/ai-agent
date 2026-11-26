@@ -306,7 +306,7 @@ function init() {
     const models = [...document.querySelectorAll('.olm:checked')].map((c) => c.value);
     const tgtMap = [
       ['pi', '#tgtPi'], ['opencode', '#tgtOpencode'], ['claude', '#tgtClaude'],
-      ['codex', '#tgtCodex'], ['qwen', '#tgtQwen'], ['dsh', '#tgtDsh'],
+      ['codex', '#tgtCodex'], ['qwen', '#tgtQwen'], ['cline', '#tgtCline'],
     ];
     const targets = tgtMap.filter(([, sel]) => $(sel)?.checked).map(([k]) => k);
     let def = $('#ollamaDefault').value;

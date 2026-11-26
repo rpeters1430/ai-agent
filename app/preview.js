@@ -65,7 +65,7 @@ function proxyHttp(req, res, port, upstreamPath) {
   req.pipe(proxyReq);
 }
 
-// Tunnel a WebSocket upgrade (Vite / Next.js HMR, DSH web UI) to 127.0.0.1:<port><targetPath>.
+// Tunnel a WebSocket upgrade (Vite / Next.js HMR, dev servers) to 127.0.0.1:<port><targetPath>.
 function proxyUpgrade(req, socket, head, port, targetPath) {
   const upstream = net.connect(port, '127.0.0.1', () => {
     const lines = [`${req.method} ${targetPath || '/'} HTTP/${req.httpVersion}`];

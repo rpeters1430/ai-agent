@@ -51,7 +51,7 @@ function testPanel(m) {
   return h('div', { class: 'olm-test' },
     h('div', { class: 'row' },
       h('button', { style: 'font-size:11px;padding:3px 8px', disabled: !!busyHere,
-        title: 'Tests this model across all 6 Ollama-capable CLIs (Pi, OpenCode, Claude, Codex, Qwen, DSH) in throwaway repos.',
+        title: 'Tests this model across all 6 local-capable CLIs (Pi, OpenCode, Claude, Codex, Qwen, Cline) in throwaway repos.',
         onclick: (e) => busy(e.target, async () => { await api('POST', '/api/ollama/tests', { model: m.name, mode: state.labMode }); await loadTests(); renderOllamaModels(); renderLab(); }) },
         busyHere ? 'Testing…' : testedCount ? 'Re-test all 6 CLIs' : 'Test all 6 CLIs'),
       h('button', { style: 'font-size:11px;padding:3px 8px', class: 'tonal',
@@ -204,7 +204,7 @@ function renderLaunchModels() {
   const sel = $('#launchModel'), cur = sel.value;
   const a = ollamaState.applied || {};
   const ollamaNames = [...new Set(OLLAMA_CLIS_ORDER.flatMap((k) => a[k] || []))].sort();
-  const customNames = [...new Set([...(a.custom?.opencode || []), ...(a.custom?.pi || [])])].sort();
+  const customNames = [...new Set(OLLAMA_CLIS_ORDER.flatMap((k) => a.custom?.[k] || []))].sort();
   const all = [...ollamaNames, ...customNames];
   sel.replaceChildren(
     h('option', { value: '' }, 'agent default'),

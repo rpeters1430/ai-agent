@@ -18,7 +18,6 @@ const workspaceMod = require('./workspace');
 const preview = require('./preview');
 const tmuxfmt = require('./tmuxfmt');
 const { wrap, notFound } = require('./errors');
-const { cleanupLegacyDshPatches } = require('./agents');
 
 const PORT = parseInt(process.env.PORT || '7681', 10);
 const WORKSPACE = process.env.WORKSPACE || '/workspace';
@@ -666,7 +665,6 @@ let shuttingDown = false;
 
 function start({ port = PORT, previewPort = PREVIEW_PORT, host = '0.0.0.0', handleSignals = true } = {}) {
   fs.mkdirSync(WORKSPACE, { recursive: true });
-  cleanupLegacyDshPatches();
   if (handleSignals) {
     process.on('SIGTERM', () => shutdown('SIGTERM'));
     process.on('SIGINT', () => shutdown('SIGINT'));

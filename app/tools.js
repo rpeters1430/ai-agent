@@ -22,7 +22,7 @@ async function latest(pkg) {
     const r = await fetch(`https://registry.npmjs.org/${enc}/latest`, { headers: { Accept: 'application/json', 'User-Agent': 'agent-hub' }, signal: AbortSignal.timeout(15000) });
     if (r.ok) v = (await r.json()).version || '';
     else {
-      // Prerelease-only packages (e.g. @deepseek-ai/dsh) may only have next/alpha/beta dist-tags.
+      // Prerelease-only packages may only have next/alpha/beta dist-tags.
       const r2 = await fetch(`https://registry.npmjs.org/-/package/${enc}/dist-tags`, { headers: { Accept: 'application/json', 'User-Agent': 'agent-hub' }, signal: AbortSignal.timeout(15000) });
       if (r2.ok) {
         const dt = await r2.json();
@@ -73,16 +73,9 @@ function refreshInfo(fresh) {
 
 function updateScript(keys) {
   const list = TOOLS.filter((t) => keys.includes(t.key));
-  const standardPkgs = list.filter((t) => t.pkg && t.pkg !== '@deepseek-ai/dsh').map((t) => `${t.pkg}@latest`);
-  const hasDsh = list.some((t) => t.pkg === '@deepseek-ai/dsh');
+  const standardPkgs = list.filter((t) => t.pkg).map((t) => `${t.pkg}@latest`);
   const lines = ['set -u', 'export NPM_CONFIG_UPDATE_NOTIFIER=false NPM_CONFIG_FUND=false', `mkdir -p '${PREFIX}/bin'`, 'fail=0'];
   if (standardPkgs.length) lines.push(`echo "== npm: ${standardPkgs.join(' ')}"`, `npm install -g --prefix '${PREFIX}' ${standardPkgs.join(' ')} || fail=1`);
-  if (hasDsh) {
-    lines.push(
-      'echo; echo "== DeepSeek Harness (@deepseek-ai/dsh)"',
-      `npm install -g --prefix '${PREFIX}' @deepseek-ai/dsh@latest || npm install -g --prefix '${PREFIX}' @deepseek-ai/dsh@next || npm install -g --prefix '${PREFIX}' @deepseek-ai/dsh@alpha || fail=1`
-    );
-  }
   for (const t of list.filter((x) => x.installer)) {
     lines.push(`echo; echo "== ${t.label}"`, `curl -fsSL '${t.installer}' | bash -s -- --dir '${PREFIX}/bin' || fail=1`);
   }

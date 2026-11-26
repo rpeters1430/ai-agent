@@ -12,14 +12,12 @@ const KEY_RE = /^[A-Z_][A-Z0-9_]{1,63}$/;
 const MASK = '••••';
 
 const KNOWN_KEYS = [
-  { key: 'ANTHROPIC_API_KEY', label: 'Anthropic API key', hint: 'Claude Code, OpenCode, Pi' },
-  { key: 'OPENAI_API_KEY',    label: 'OpenAI API key',    hint: 'Codex, OpenCode, Pi, Qwen Code' },
+  { key: 'ANTHROPIC_API_KEY', label: 'Anthropic API key', hint: 'Claude Code, OpenCode, Pi, Cline' },
+  { key: 'OPENAI_API_KEY',    label: 'OpenAI API key',    hint: 'Codex, OpenCode, Pi, Qwen Code, Cline' },
   { key: 'OPENAI_BASE_URL',   label: 'OpenAI Base URL',   hint: 'Optional OpenAI-compatible gateway' },
   { key: 'GEMINI_API_KEY',    label: 'Gemini API key',    hint: 'Gemini CLI' },
-  { key: 'DEEPSEEK_API_KEY',  label: 'DeepSeek API key',  hint: 'DeepSeek Harness (dsh)' },
-  { key: 'DEEPSEEK_BASE_URL', label: 'DeepSeek Base URL', hint: 'Optional custom DeepSeek endpoint' },
   { key: 'DASHSCOPE_API_KEY', label: 'DashScope API key', hint: 'Qwen Code (Alibaba Cloud)' },
-  { key: 'OPENROUTER_API_KEY', label: 'OpenRouter API key', hint: 'OpenCode, Pi, OpenAI-compatible' },
+  { key: 'OPENROUTER_API_KEY', label: 'OpenRouter API key', hint: 'OpenCode, Pi, Cline, OpenAI-compatible' },
 ];
 
 const INSTRUCTION_NAMES = ['CLAUDE.md', 'AGENTS.md', 'GEMINI.md'];

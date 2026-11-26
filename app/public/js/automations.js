@@ -33,7 +33,7 @@ const JOB_BADGE = { queued: '', running: 'live', succeeded: 'ok', failed: 'bad',
 const jobTitle = (j) => ({ fix_issue: `Fix #${j.number}`, pr_task: `PR #${j.number}`, review: `Review #${j.number}`, task: 'Task' }[j.kind] || j.kind)
   + (j.title ? ` · ${j.title}` : j.kind === 'task' ? ` · ${j.ruleName}` : '');
 const agentName = (k) => autoState.agents[k]?.label || k;
-const supportsLocalModel = (k) => ['pi', 'opencode', 'claude', 'codex', 'qwen', 'dsh'].includes(k);
+const supportsLocalModel = (k) => ['pi', 'opencode', 'claude', 'codex', 'qwen', 'cline'].includes(k);
 
 function appliedModels(agentKey) {
   if (!supportsLocalModel(agentKey)) return [];

@@ -70,7 +70,7 @@ test('cleanRule normalizes repo URLs and validates triggers/agents/autoReview', 
   assert.equal(cleanRule({ repo: 'octocat/hello-world', trigger: 'label', label: 'x', agent: 'claude', model: 'qwen3:8b' }).model, 'qwen3:8b');
   assert.equal(cleanRule({ repo: 'octocat/hello-world', trigger: 'label', label: 'x', agent: 'codex', model: 'qwen3:8b' }).model, 'qwen3:8b');
   assert.equal(cleanRule({ repo: 'octocat/hello-world', trigger: 'label', label: 'x', agent: 'qwen', model: 'qwen3:8b' }).model, 'qwen3:8b');
-  assert.equal(cleanRule({ repo: 'octocat/hello-world', trigger: 'label', label: 'x', agent: 'dsh', model: 'qwen3:8b' }).model, 'qwen3:8b');
+  assert.equal(cleanRule({ repo: 'octocat/hello-world', trigger: 'label', label: 'x', agent: 'cline', model: 'qwen3:8b' }).model, 'qwen3:8b');
   assert.throws(() => cleanRule({ repo: 'octocat/hello-world', trigger: 'label', label: 'x', agent: 'gemini', model: 'qwen:7b' }), /local Ollama model/);
   assert.throws(() => cleanRule({ repo: 'octocat/hello-world', trigger: 'label', label: 'x', agent: 'claude', autoReview: true, reviewAgent: 'agy', reviewModel: 'qwen:7b' }), /local Ollama model/);
 });
@@ -443,8 +443,8 @@ test('validateCron and matchesCron parse 5-field cron expressions accurately', (
   assert.equal(sched.cron, '30 3 * * 1-5');
   assert.match(sched.name, /Cron \(30 3 \* \* 1-5\)/);
 
-  const ci = cleanRule({ repo: 'octocat/app', trigger: 'ci_failure', agent: 'qwen', autoReview: true, reviewAgent: 'dsh' });
+  const ci = cleanRule({ repo: 'octocat/app', trigger: 'ci_failure', agent: 'qwen', autoReview: true, reviewAgent: 'cline' });
   assert.equal(ci.trigger, 'ci_failure');
   assert.equal(ci.autoReview, true);
-  assert.equal(ci.reviewAgent, 'dsh');
+  assert.equal(ci.reviewAgent, 'cline');
 });

@@ -185,14 +185,20 @@ function wireFeatureEvents() {
     e.preventDefault();
     const f = e.target;
     busy(f.querySelector('button[type=submit]'), async () => {
+      const targets = [
+        ['pi', 'tgtPi'], ['opencode', 'tgtOpencode'], ['claude', 'tgtClaude'],
+        ['codex', 'tgtCodex'], ['qwen', 'tgtQwen'], ['cline', 'tgtCline'],
+      ].filter(([, name]) => f[name]?.checked).map(([k]) => k);
       await api('POST', '/api/providers', {
         id: f.id.value, name: f.name.value, baseUrl: f.baseUrl.value,
         apiKey: f.apiKey.value, contextWindow: Number(f.contextWindow.value) || 32768, models: f.models.value,
       });
-      await api('POST', `/api/providers/${encodeURIComponent(f.id.value.trim().toLowerCase())}/apply`, { targets: ['opencode', 'pi'] });
+      if (targets.length) {
+        await api('POST', `/api/providers/${encodeURIComponent(f.id.value.trim().toLowerCase())}/apply`, { targets });
+      }
       $('#providerDlg').close();
       await loadCustomProviders();
-      showNoticeToast('Provider saved & applied', `${f.name.value} is ready in OpenCode and Pi.`);
+      showNoticeToast('Provider saved & applied', `${f.name.value} is ready in ${targets.length ? targets.join(', ') : 'Agent Hub'}.`);
     });
   });
 
